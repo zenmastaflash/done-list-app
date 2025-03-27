@@ -23,7 +23,6 @@ export default function QuestionnaireScreen({ navigation }) {
   const saveResponses = async () => {
     setLoading(true);
     try {
-      // Get current user
       const userResponse = await supabase.auth.getUser();
       
       if (!userResponse.data.user) {
@@ -35,17 +34,10 @@ export default function QuestionnaireScreen({ navigation }) {
       const userId = userResponse.data.user.id;
       const date = new Date().toISOString().split('T')[0];
       
-      // First try to delete any existing record for today to avoid constraint issues
-      await supabase
-        .from('questionnaire_responses')
-        .delete()
-        .eq('user_id', userId)
-        .eq('date', date);
-        
-      // Now insert the new responses
+      // Use upsert instead of insert to handle the unique constraint
       const { error } = await supabase
         .from('questionnaire_responses')
-        .insert({
+        .upsert({
           user_id: userId,
           date: date,
           got_out_of_bed: responses.got_out_of_bed,
@@ -54,14 +46,14 @@ export default function QuestionnaireScreen({ navigation }) {
           saw_sunlight: responses.saw_sunlight,
           moved_body: responses.moved_body,
           connected_with_someone: responses.connected_with_someone
-        });
+        }, { onConflict: 'user_id,date' });
       
       if (error) {
         console.error('Error saving responses:', error);
         throw error;
       }
       
-      // Now, create accomplishments from checked items
+      // Create accomplishments from checked items
       const accomplishments = [];
       if (responses.got_out_of_bed) accomplishments.push("Got out of bed today");
       if (responses.brushed_teeth) accomplishments.push("Brushed my teeth");

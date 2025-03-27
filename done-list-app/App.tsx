@@ -1,3 +1,4 @@
+import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { Navigation } from './src/lib/navigation';
 import { supabase } from './src/lib/supabase';

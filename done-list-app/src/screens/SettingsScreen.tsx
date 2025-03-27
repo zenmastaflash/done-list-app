@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
+import { useTheme } from '../hooks/useTheme';
 
 export default function SettingsScreen({ navigation }) {
   const [settings, setSettings] = useState({
@@ -12,7 +13,8 @@ export default function SettingsScreen({ navigation }) {
   });
   const [loading, setLoading] = useState(false);
   const [healthAvailable, setHealthAvailable] = useState(false);
-
+  const { theme, toggleTheme } = useTheme();
+  
   useEffect(() => {
     checkHealthAvailability();
     loadUserSettings();
@@ -34,7 +36,7 @@ export default function SettingsScreen({ navigation }) {
         .eq('user_id', userId)
         .single();
       
-      if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned"
+      if (error && error.code !== 'PGRST116') {
         console.error('Error fetching settings:', error);
         return;
       }
@@ -67,7 +69,6 @@ export default function SettingsScreen({ navigation }) {
       if (!settings.connectAppleHealth) {
         await requestHealthPermissions();
       } else {
-        // If already connected, disconnect
         await updateHealthConnection(false);
       }
       return;
@@ -78,20 +79,12 @@ export default function SettingsScreen({ navigation }) {
       return;
     }
     
-    // Remove the reminders handling from here since we have a separate function
-    // if (key === 'connectReminders') {
-    //   navigation.navigate('Reminders');
-    //   return;
-    // }
-    
-    // Handle other settings
     setSettings(prev => {
       const newSettings = {
         ...prev,
         [key]: !prev[key]
       };
       
-      // Save the setting
       saveSettings(newSettings);
       
       return newSettings;
@@ -133,7 +126,6 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       
-      // First check if a record already exists
       const { data, error: selectError } = await supabase
         .from('user_settings')
         .select('id')
@@ -145,7 +137,6 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       
-      // If record exists, update it; otherwise insert
       const operation = data ? 
         supabase.from('user_settings').update({
           health_connected: connected,
@@ -177,7 +168,6 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       
-      // First check if a record already exists
       const { data, error: selectError } = await supabase
         .from('user_settings')
         .select('id')
@@ -189,7 +179,6 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       
-      // If record exists, update it; otherwise insert
       const operation = data ? 
         supabase.from('user_settings').update({
           enable_summaries: newSettings.enableSummaries,
@@ -213,13 +202,11 @@ export default function SettingsScreen({ navigation }) {
 
   const toggleReminders = async (value) => {
     try {
-      // Update local state first
       setSettings(prev => ({
         ...prev,
         connectReminders: value
       }));
       
-      // Then update in the database
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
       
@@ -235,7 +222,6 @@ export default function SettingsScreen({ navigation }) {
       
       if (error) throw error;
       
-      // Show a success message
       if (value) {
         Alert.alert('Success', 'Reminders enabled');
       } else {
@@ -245,7 +231,6 @@ export default function SettingsScreen({ navigation }) {
       console.error('Error toggling reminders:', error);
       Alert.alert('Error', 'Failed to update reminders settings');
       
-      // Revert the UI state if the database update failed
       setSettings(prev => ({
         ...prev,
         connectReminders: !value
@@ -261,6 +246,20 @@ export default function SettingsScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Settings</Text>
+      
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Appearance</Text>
+        
+        <View style={styles.settingContainer}>
+          <Text style={styles.settingText}>Dark Mode</Text>
+          <Switch
+            value={theme === 'dark'}
+            onValueChange={toggleTheme}
+            trackColor={{ false: "#767577", true: "#4CAF50" }}
+            thumbColor={theme === 'dark' ? "#f5dd4b" : "#f4f3f4"}
+          />
+        </View>
+      </View>
       
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Integrations</Text>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
+import { Swipeable } from 'react-native-gesture-handler';
 
 export default function HomeScreen({ navigation }) {
   const [accomplishments, setAccomplishments] = useState([]);
@@ -39,9 +40,13 @@ export default function HomeScreen({ navigation }) {
   const fetchAccomplishments = async () => {
     setLoading(true);
     try {
+      // Get today's date in ISO format (YYYY-MM-DD)
+      const today = new Date().toISOString().split('T')[0];
+      
       const { data, error } = await supabase
         .from('accomplishments')
         .select('*')
+        .gte('created_at', today) // Only fetch items created today or later
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -75,7 +80,6 @@ export default function HomeScreen({ navigation }) {
     
     setLoading(true);
     try {
-      // Get current user
       const userResponse = await supabase.auth.getUser();
       
       if (!userResponse.data.user) {
@@ -111,10 +115,33 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  const deleteAccomplishment = async (id) => {
+    try {
+      // Only delete if it's a database item (not health data)
+      if (typeof id === 'string' && id.startsWith('health-')) {
+        // Just remove from state if it's health data
+        setHealthData(prev => prev.filter(item => item.id !== id));
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('accomplishments')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      // Refresh accomplishments list
+      fetchAccomplishments();
+    } catch (error) {
+      console.error('Error deleting accomplishment:', error);
+      Alert.alert('Error', 'Could not delete accomplishment');
+    }
+  };
+
   const saveHealthDataAsAccomplishments = async () => {
     setLoading(true);
     try {
-      // Get current user
       const userResponse = await supabase.auth.getUser();
       
       if (!userResponse.data.user) {
@@ -125,7 +152,6 @@ export default function HomeScreen({ navigation }) {
       
       const userId = userResponse.data.user.id;
       
-      // Convert health data to accomplishments
       const items = healthData.map(item => ({
         description: item.description,
         user_id: userId,
@@ -149,6 +175,37 @@ export default function HomeScreen({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Render swipeable item
+  const renderItem = ({ item }) => {
+    const rightSwipeActions = () => {
+      return (
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => deleteAccomplishment(item.id)}
+        >
+          <Text style={styles.deleteButtonText}>Delete</Text>
+        </TouchableOpacity>
+      );
+    };
+    
+    return (
+      <Swipeable
+        renderRightActions={rightSwipeActions}
+      >
+        <View style={item.isHealthData ? [styles.item, styles.healthItem] : styles.item}>
+          <Text style={styles.itemText}>{item.description}</Text>
+          {item.source && (
+            <Text style={styles.sourceText}>
+              {item.source === 'todoist' ? 'From Todoist' : 
+               item.source === 'health' ? 'From Health' :
+               item.source === 'questionnaire' ? 'From Daily Check-in' : ''}
+            </Text>
+          )}
+        </View>
+      </Swipeable>
+    );
   };
 
   // Combine manual accomplishments and health data
@@ -180,17 +237,7 @@ export default function HomeScreen({ navigation }) {
         <FlatList
           data={allAccomplishments}
           keyExtractor={(item, index) => item.id ? item.id.toString() : `item-${index}`}
-          renderItem={({ item }) => (
-            <View style={item.isHealthData ? [styles.item, styles.healthItem] : styles.item}>
-              <Text style={styles.itemText}>{item.description}</Text>
-              {item.source && (
-                <Text style={styles.sourceText}>
-                  {item.source === 'todoist' ? 'From Todoist' : 
-                   item.source === 'health' ? 'From Health' : ''}
-                </Text>
-              )}
-            </View>
-          )}
+          renderItem={renderItem}
           ListEmptyComponent={
             <Text style={styles.emptyText}>No accomplishments yet today.</Text>
           }
@@ -272,6 +319,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#e3f2fd',
     borderLeftWidth: 4,
     borderLeftColor: '#2196f3',
+  },
+  deleteButton: {
+    backgroundColor: '#f44336',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 100,
+    height: '100%',
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
   itemText: {
     fontSize: 16,
