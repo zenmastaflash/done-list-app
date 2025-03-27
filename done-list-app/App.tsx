@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Navigation } from './src/lib/navigation';
 import { supabase } from './src/lib/supabase';
 import { View, Text } from 'react-native';
+import { ThemeProvider } from './src/context/ThemeContext';
 
 export default function App() {
   const [initialized, setInitialized] = useState(false);
@@ -24,5 +25,9 @@ export default function App() {
     );
   }
 
-  return <Navigation />;
+  return (
+    <ThemeProvider>
+      <Navigation />
+    </ThemeProvider>
+  );
 }

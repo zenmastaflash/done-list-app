@@ -3,13 +3,35 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, A
 import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
 import { Swipeable } from 'react-native-gesture-handler';
+import { useTheme } from '../context/ThemeContext';
+import { getThemeColors, spacing, borderRadius } from '../styles/theme';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-export default function HomeScreen({ navigation }) {
-  const [accomplishments, setAccomplishments] = useState([]);
+interface Accomplishment {
+  id: string;
+  description: string;
+  source: string;
+  isHealthData: boolean;
+}
+
+type RootStackParamList = {
+  Home: undefined;
+  Questionnaire: undefined;
+  Settings: undefined;
+};
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+export default function HomeScreen() {
+  const navigation = useNavigation<NavigationProp>();
+  const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
   const [newAccomplishment, setNewAccomplishment] = useState('');
   const [loading, setLoading] = useState(false);
-  const [healthData, setHealthData] = useState([]);
+  const [healthData, setHealthData] = useState<Accomplishment[]>([]);
   const [healthConnected, setHealthConnected] = useState(false);
+  const { theme } = useTheme();
+  const colors = getThemeColors(theme);
   
   useEffect(() => {
     fetchAccomplishments();
@@ -49,7 +71,12 @@ export default function HomeScreen({ navigation }) {
         .gte('created_at', today) // Only fetch items created today or later
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching accomplishments:', error);
+        Alert.alert('Error', 'Could not load your accomplishments');
+        return;
+      }
+      
       setAccomplishments(data || []);
     } catch (error) {
       console.error('Error fetching accomplishments:', error);
@@ -115,7 +142,7 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const deleteAccomplishment = async (id) => {
+  const deleteAccomplishment = async (id: string) => {
     try {
       // Only delete if it's a database item (not health data)
       if (typeof id === 'string' && id.startsWith('health-')) {
@@ -128,14 +155,15 @@ export default function HomeScreen({ navigation }) {
         .from('accomplishments')
         .delete()
         .eq('id', id);
-      
-      if (error) throw error;
-      
-      // Refresh accomplishments list
-      fetchAccomplishments();
+
+      if (error) {
+        console.error('Error deleting accomplishment:', error);
+        throw error;
+      }
+
+      setAccomplishments(prev => prev.filter(acc => acc.id !== id));
     } catch (error) {
-      console.error('Error deleting accomplishment:', error);
-      Alert.alert('Error', 'Could not delete accomplishment');
+      Alert.alert('Error', 'Failed to delete accomplishment');
     }
   };
 
@@ -177,32 +205,25 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  // Render swipeable item
-  const renderItem = ({ item }) => {
-    const rightSwipeActions = () => {
-      return (
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => deleteAccomplishment(item.id)}
-        >
-          <Text style={styles.deleteButtonText}>Delete</Text>
-        </TouchableOpacity>
-      );
-    };
-    
-    return (
-      <Swipeable
-        renderRightActions={rightSwipeActions}
+  const renderItem = ({ item }: { item: Accomplishment }) => {
+    const renderRightActions = () => (
+      <TouchableOpacity
+        style={[styles.deleteButton, { backgroundColor: colors.error }]}
+        onPress={() => deleteAccomplishment(item.id)}
       >
-        <View style={item.isHealthData ? [styles.item, styles.healthItem] : styles.item}>
-          <Text style={styles.itemText}>{item.description}</Text>
-          {item.source && (
-            <Text style={styles.sourceText}>
-              {item.source === 'todoist' ? 'From Todoist' : 
-               item.source === 'health' ? 'From Health' :
-               item.source === 'questionnaire' ? 'From Daily Check-in' : ''}
-            </Text>
-          )}
+        <Text style={styles.deleteButtonText}>Delete</Text>
+      </TouchableOpacity>
+    );
+
+    return (
+      <Swipeable renderRightActions={renderRightActions}>
+        <View style={[
+          styles.item,
+          { backgroundColor: colors.surface },
+          item.isHealthData && styles.healthItem
+        ]}>
+          <Text style={[styles.itemText, { color: colors.text }]}>{item.description}</Text>
+          <Text style={[styles.sourceText, { color: colors.primary }]}>{item.source}</Text>
         </View>
       </Swipeable>
     );
@@ -211,19 +232,136 @@ export default function HomeScreen({ navigation }) {
   // Combine manual accomplishments and health data
   const allAccomplishments = [...accomplishments, ...healthData];
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: spacing.lg,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '700',
+      marginBottom: spacing.lg,
+      color: colors.text,
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      marginBottom: spacing.lg,
+    },
+    input: {
+      flex: 1,
+      borderWidth: 1,
+      padding: spacing.sm,
+      borderRadius: borderRadius.md,
+      marginRight: spacing.sm,
+      fontSize: 16,
+      backgroundColor: colors.surface,
+      color: colors.text,
+      borderColor: colors.border,
+    },
+    addButton: {
+      padding: spacing.sm,
+      borderRadius: borderRadius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 70,
+      backgroundColor: colors.primary,
+    },
+    addButtonText: {
+      color: 'white',
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    loader: {
+      marginVertical: spacing.lg,
+    },
+    item: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      marginBottom: spacing.sm,
+    },
+    healthItem: {
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
+    },
+    deleteButton: {
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 100,
+      height: '100%',
+      backgroundColor: colors.error,
+    },
+    deleteButtonText: {
+      color: 'white',
+      fontWeight: '700',
+      fontSize: 16,
+    },
+    itemText: {
+      fontSize: 16,
+      color: colors.text,
+    },
+    sourceText: {
+      fontSize: 12,
+      color: colors.primary,
+      marginTop: spacing.xs,
+    },
+    emptyText: {
+      textAlign: 'center',
+      marginTop: spacing.xl,
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    healthButton: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      marginTop: spacing.sm,
+      marginBottom: spacing.lg,
+      backgroundColor: colors.secondary,
+    },
+    buttonContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    questionnaireButton: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      flex: 1,
+      marginRight: spacing.sm,
+      backgroundColor: colors.primary,
+    },
+    settingsButton: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      flex: 1,
+      backgroundColor: colors.secondary,
+    },
+    buttonText: {
+      color: 'white',
+      fontWeight: '700',
+      fontSize: 16,
+    },
+  });
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Today's Accomplishments</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Today's Accomplishments</Text>
       
       <View style={styles.inputContainer}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { 
+            backgroundColor: colors.surface,
+            color: colors.text,
+            borderColor: colors.border
+          }]}
           placeholder="I accomplished..."
+          placeholderTextColor={colors.textSecondary}
           value={newAccomplishment}
           onChangeText={setNewAccomplishment}
         />
         <TouchableOpacity 
-          style={styles.addButton}
+          style={[styles.addButton, { backgroundColor: colors.primary }]}
           onPress={addAccomplishment}
           disabled={loading}
         >
@@ -232,21 +370,23 @@ export default function HomeScreen({ navigation }) {
       </View>
       
       {loading ? (
-        <ActivityIndicator style={styles.loader} color="#4caf50" size="large" />
+        <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
       ) : (
         <FlatList
           data={allAccomplishments}
           keyExtractor={(item, index) => item.id ? item.id.toString() : `item-${index}`}
           renderItem={renderItem}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No accomplishments yet today.</Text>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+              No accomplishments yet today.
+            </Text>
           }
         />
       )}
       
       {healthData.length > 0 && (
         <TouchableOpacity 
-          style={styles.healthButton}
+          style={[styles.healthButton, { backgroundColor: colors.secondary }]}
           onPress={saveHealthDataAsAccomplishments}
         >
           <Text style={styles.buttonText}>Save Health Data as Accomplishments</Text>
@@ -255,14 +395,14 @@ export default function HomeScreen({ navigation }) {
       
       <View style={styles.buttonContainer}>
         <TouchableOpacity 
-          style={styles.questionnaireButton}
+          style={[styles.questionnaireButton, { backgroundColor: colors.primary }]}
           onPress={() => navigation.navigate('Questionnaire')}
         >
           <Text style={styles.buttonText}>Daily Check-in</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={styles.settingsButton}
+          style={[styles.settingsButton, { backgroundColor: colors.secondary }]}
           onPress={() => navigation.navigate('Settings')}
         >
           <Text style={styles.buttonText}>Settings</Text>
@@ -271,109 +411,3 @@ export default function HomeScreen({ navigation }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    marginBottom: 20,
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 10,
-    borderRadius: 5,
-    marginRight: 10,
-  },
-  addButton: {
-    backgroundColor: '#4caf50',
-    padding: 10,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 70,
-  },
-  addButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  loader: {
-    marginVertical: 20,
-  },
-  item: {
-    backgroundColor: '#f9f9f9',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  healthItem: {
-    backgroundColor: '#e3f2fd',
-    borderLeftWidth: 4,
-    borderLeftColor: '#2196f3',
-  },
-  deleteButton: {
-    backgroundColor: '#f44336',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 100,
-    height: '100%',
-  },
-  deleteButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  itemText: {
-    fontSize: 16,
-  },
-  sourceText: {
-    fontSize: 12,
-    color: '#2196f3',
-    marginTop: 5,
-  },
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 50,
-    color: '#888',
-  },
-  healthButton: {
-    backgroundColor: '#2196f3',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  questionnaireButton: {
-    backgroundColor: '#9c27b0',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 10,
-  },
-  settingsButton: {
-    backgroundColor: '#607d8b',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    flex: 1,
-  },
-  buttonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-});
