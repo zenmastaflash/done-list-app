@@ -252,4 +252,16 @@ export class HealthService {
 
     return accomplishments;
   }
+
+  public static async isAvailable(): Promise<boolean> {
+    return HealthService.getInstance().isAvailable();
+  }
+
+  public static async requestPermissions(): Promise<boolean> {
+    return HealthService.getInstance().requestPermissions();
+  }
+
+  public static async generateAccomplishments(): Promise<string[]> {
+    return HealthService.getInstance().generateAccomplishments();
+  }
 }

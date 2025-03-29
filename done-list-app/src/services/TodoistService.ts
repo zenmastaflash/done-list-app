@@ -1,53 +1,119 @@
-import { TodoistApi } from '@doist/todoist-api-typescript';
+import { TodoistApi, Task, Project } from '@doist/todoist-api-typescript';
+import { supabase } from '../lib/supabase';
+import { Accomplishment } from '../types/accomplishment';
+
+interface TodoistTask {
+  id: string;
+  content: string;
+  isCompleted: boolean;
+}
+
+interface CompletedTask {
+  id: string;
+  content: string;
+  completedAt: string;
+}
+
+interface CompletedTasksResponse {
+  items: CompletedTask[];
+}
 
 export class TodoistService {
-  private static api: TodoistApi | null = null;
-  private static token: string | null = null;
+  private static instance: TodoistService | null = null;
+  private api: TodoistApi | null = null;
+  private isInitialized = false;
 
-  // Initialize with API token
-  static initialize(apiToken: string): boolean {
+  private constructor() {}
+
+  static getInstance(): TodoistService {
+    if (!TodoistService.instance) {
+      TodoistService.instance = new TodoistService();
+    }
+    return TodoistService.instance;
+  }
+
+  async initialize(token: string): Promise<boolean> {
+    if (this.isInitialized) return true;
+
     try {
-      this.token = apiToken;
-      this.api = new TodoistApi(apiToken);
+      this.api = new TodoistApi(token);
+      this.isInitialized = true;
       return true;
     } catch (error) {
-      console.error('Failed to initialize Todoist:', error);
+      console.error('Failed to initialize TodoistService:', error);
       return false;
     }
   }
 
-  // Check if service is initialized
-  static isInitialized(): boolean {
-    return !!this.api && !!this.token;
+  async getCompletedTasks(): Promise<Accomplishment[]> {
+    if (!this.api) {
+      throw new Error('TodoistService not initialized');
+    }
+
+    try {
+      // Get all tasks and filter completed ones
+      const allTasks = await this.api.getTasks();
+      const completedTasks = allTasks.filter((task: Task) => task.isCompleted);
+      
+      return completedTasks.map((task: Task) => ({
+        id: task.id,
+        description: task.content,
+        type: 'todoist' as const,
+        created_at: task.createdAt || new Date().toISOString(),
+        user_id: '', // Will be set when saving to Supabase
+      }));
+    } catch (error) {
+      console.error('Failed to get completed tasks:', error);
+      throw error;
+    }
   }
 
-  // Get API token
-  static getToken(): string | null {
-    return this.token;
+  async saveCompletedTasksAsAccomplishments(): Promise<void> {
+    try {
+      const userResponse = await supabase.auth.getUser();
+      
+      if (!userResponse.data.user) {
+        throw new Error('User not authenticated');
+      }
+      
+      const userId = userResponse.data.user.id;
+      const completedTasks = await this.getCompletedTasks();
+      
+      const accomplishments = completedTasks.map(task => ({
+        ...task,
+        user_id: userId,
+      }));
+
+      const { error } = await supabase
+        .from('accomplishments')
+        .insert(accomplishments);
+
+      if (error) {
+        console.error('Error saving Todoist tasks:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error saving Todoist tasks:', error);
+      throw error;
+    }
   }
 
   // Get completed tasks for today
   static async getCompletedToday(): Promise<string[]> {
-    if (!this.api) {
+    const instance = TodoistService.getInstance();
+    if (!instance.api) {
       throw new Error('Todoist API not initialized');
     }
     
     try {
       const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
+      today.setHours(0, 0, 0, 0);
       
-      const completedTasks = await this.api.getCompletedTasks({
-        since: yesterday.toISOString(),
+      const allTasks = await instance.api.getTasks();
+      const todayTasks = allTasks.filter((task: Task) => {
+        return task.isCompleted && task.createdAt && new Date(task.createdAt) >= today;
       });
       
-      // Filter for tasks completed today
-      const todayStart = new Date(today.setHours(0, 0, 0, 0)).toISOString();
-      const todayTasks = completedTasks.items.filter(task => {
-        return task.completedAt && task.completedAt >= todayStart;
-      });
-      
-      // Extract task names
       return todayTasks.map(task => task.content);
     } catch (error) {
       console.error('Error fetching completed Todoist tasks:', error);
@@ -56,13 +122,15 @@ export class TodoistService {
   }
 
   // Get active projects
-  static async getProjects(): Promise<any[]> {
-    if (!this.api) {
+  static async getProjects(): Promise<Project[]> {
+    const instance = TodoistService.getInstance();
+    if (!instance.api) {
       throw new Error('Todoist API not initialized');
     }
     
     try {
-      return await this.api.getProjects();
+      const response = await instance.api.getProjects();
+      return Array.isArray(response) ? response : [];
     } catch (error) {
       console.error('Error fetching Todoist projects:', error);
       return [];
@@ -70,13 +138,15 @@ export class TodoistService {
   }
 
   // Get all tasks
-  static async getTasks(): Promise<any[]> {
-    if (!this.api) {
+  static async getTasks(): Promise<Task[]> {
+    const instance = TodoistService.getInstance();
+    if (!instance.api) {
       throw new Error('Todoist API not initialized');
     }
     
     try {
-      return await this.api.getTasks();
+      const response = await instance.api.getTasks();
+      return Array.isArray(response) ? response : [];
     } catch (error) {
       console.error('Error fetching Todoist tasks:', error);
       return [];

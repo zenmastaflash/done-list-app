@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Platform, Modal, TouchableWithoutFeedback } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -7,13 +7,11 @@ import { useTheme } from '../context/ThemeContext';
 import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-interface Accomplishment {
-  id: string;
-  description: string;
-  source: string;
-  isHealthData: boolean;
-}
+import { useAuth } from '../hooks/useAuth';
+import type { Accomplishment } from '../types/accomplishment';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import { FrequentAccomplishmentsService } from '../services/FrequentAccomplishmentsService';
 
 type RootStackParamList = {
   Home: undefined;
@@ -23,14 +21,36 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+const getAccomplishmentIcon = (type: string) => {
+  switch (type) {
+    case 'health':
+      return 'heart';
+    case 'todoist':
+      return 'checkmark-circle';
+    case 'reminders':
+      return 'notifications';
+    case 'manual':
+      return 'add-circle';
+    case 'questionnaire':
+      return 'chatbubble-ellipses';
+    default:
+      return 'star';
+  }
+};
+
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { handleUnauthorized } = useAuth();
   const [accomplishments, setAccomplishments] = useState<Accomplishment[]>([]);
   const [newAccomplishment, setNewAccomplishment] = useState('');
   const [loading, setLoading] = useState(false);
   const [healthData, setHealthData] = useState<Accomplishment[]>([]);
   const [healthConnected, setHealthConnected] = useState(false);
-  const { theme, colors } = useTheme();
+  const theme = useTheme();
+  const [frequentAccomplishments, setFrequentAccomplishments] = useState<string[]>([]);
+  const frequentAccomplishmentsService = FrequentAccomplishmentsService.getInstance();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
   
   useFocusEffect(
     React.useCallback(() => {
@@ -38,6 +58,10 @@ export default function HomeScreen() {
       checkHealthConnection();
     }, [])
   );
+
+  useEffect(() => {
+    loadFrequentAccomplishments();
+  }, []);
 
   const checkHealthConnection = async () => {
     try {
@@ -63,6 +87,14 @@ export default function HomeScreen() {
   const fetchAccomplishments = async () => {
     setLoading(true);
     try {
+      const userResponse = await supabase.auth.getUser();
+      
+      if (!userResponse.data.user) {
+        handleUnauthorized();
+        setLoading(false);
+        return;
+      }
+
       // Get today's date in ISO format (YYYY-MM-DD)
       const today = new Date().toISOString().split('T')[0];
       
@@ -103,41 +135,34 @@ export default function HomeScreen() {
     }
   };
 
+  const loadFrequentAccomplishments = async () => {
+    try {
+      const frequent = await frequentAccomplishmentsService.getFrequentAccomplishments();
+      // Filter out questionnaire accomplishments completely
+      const filteredFrequent = frequent.filter(acc => 
+        !acc.toLowerCase().includes('questionnaire') && 
+        !acc.toLowerCase().includes('check-in') &&
+        !acc.toLowerCase().includes('daily check-in') &&
+        !acc.toLowerCase().includes('check in')
+      );
+      setFrequentAccomplishments(filteredFrequent);
+    } catch (error) {
+      console.error('Error loading frequent accomplishments:', error);
+    }
+  };
+
   const addAccomplishment = async () => {
     if (!newAccomplishment.trim()) return;
-    
+
     setLoading(true);
     try {
-      const userResponse = await supabase.auth.getUser();
-      
-      if (!userResponse.data.user) {
-        Alert.alert('Error', 'Not logged in');
-        setLoading(false);
-        return;
-      }
-      
-      const userId = userResponse.data.user.id;
-      
-      const { error } = await supabase
-        .from('accomplishments')
-        .insert([
-          { 
-            description: newAccomplishment.trim(),
-            user_id: userId,
-            source: 'manual'
-          }
-        ]);
-      
-      if (error) {
-        console.error('Error adding accomplishment:', error);
-        throw error;
-      }
-      
+      await frequentAccomplishmentsService.addAccomplishment(newAccomplishment.trim());
       setNewAccomplishment('');
-      fetchAccomplishments();
+      await loadAccomplishments();
+      await loadFrequentAccomplishments();
     } catch (error) {
       console.error('Error adding accomplishment:', error);
-      Alert.alert('Error', 'Could not save accomplishment');
+      Alert.alert('Error', 'Failed to add accomplishment');
     } finally {
       setLoading(false);
     }
@@ -169,62 +194,112 @@ export default function HomeScreen() {
   };
 
   const saveHealthDataAsAccomplishments = async () => {
+    try {
+      const userResponse = await supabase.auth.getUser();
+      
+      if (!userResponse.data.user) {
+        handleUnauthorized();
+        return;
+      }
+      
+      const userId = userResponse.data.user.id;
+      
+      const healthAccomplishments = healthData.map(acc => ({
+        description: acc.description,
+        type: 'health' as const,
+        user_id: userId,
+        created_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase
+        .from('accomplishments')
+        .insert(healthAccomplishments);
+
+      if (error) {
+        console.error('Error saving health data:', error);
+        throw error;
+      }
+
+      await loadAccomplishments();
+      Alert.alert('Success', 'Health data saved as accomplishments');
+    } catch (error) {
+      console.error('Error saving health data:', error);
+      Alert.alert('Error', 'Failed to save health data');
+    }
+  };
+
+  const loadAccomplishments = async () => {
     setLoading(true);
     try {
       const userResponse = await supabase.auth.getUser();
       
       if (!userResponse.data.user) {
-        Alert.alert('Error', 'Not logged in');
+        handleUnauthorized();
         setLoading(false);
         return;
       }
       
       const userId = userResponse.data.user.id;
       
-      const items = healthData.map(item => ({
-        description: item.description,
-        user_id: userId,
-        source: 'health'
-      }));
-      
-      if (items.length === 0) return;
-      
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('accomplishments')
-        .insert(items);
+        .select('*')
+        .eq('user_id', userId)
+        .gte('created_at', new Date().toISOString().split('T')[0])
+        .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching accomplishments:', error);
+        throw error;
+      }
       
-      Alert.alert('Success', 'Health data saved as accomplishments!');
-      setHealthData([]);
-      fetchAccomplishments();
+      setAccomplishments(data || []);
     } catch (error) {
-      console.error('Error saving health data:', error);
-      Alert.alert('Error', 'Could not save health data as accomplishments');
+      console.error('Error fetching accomplishments:', error);
+      Alert.alert('Error', 'Failed to load accomplishments');
     } finally {
       setLoading(false);
     }
   };
 
-  const renderItem = ({ item }: { item: Accomplishment }) => {
+  const handleKeyPress = (event: any) => {
+    if (event.key === 'Enter') {
+      addAccomplishment();
+    }
+  };
+
+  const renderAccomplishment = ({ item }: { item: Accomplishment }) => {
+    if (!theme) return null;
+
     const renderRightActions = () => (
       <TouchableOpacity
-        style={[styles.deleteButton, { backgroundColor: colors.error }]}
+        style={[styles.deleteButton, { backgroundColor: theme.colors.error }]}
         onPress={() => deleteAccomplishment(item.id)}
       >
-        <Text style={styles.deleteButtonText}>Delete</Text>
+        <Ionicons name="trash-outline" size={20} color="white" />
       </TouchableOpacity>
     );
 
     return (
       <Swipeable renderRightActions={renderRightActions}>
-        <View style={[
-          styles.item,
-          { backgroundColor: colors.surface },
-          item.isHealthData && styles.healthItem
-        ]}>
-          <Text style={[styles.itemText, { color: colors.text }]}>{item.description}</Text>
-          <Text style={[styles.sourceText, { color: colors.primary }]}>{item.source}</Text>
+        <View style={[styles.accomplishmentItem, { backgroundColor: theme.colors.card }]}>
+          <View style={styles.accomplishmentContent}>
+            <View style={[styles.iconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+              <Ionicons 
+                name={getAccomplishmentIcon(item.type)} 
+                size={20} 
+                color={theme.colors.primary} 
+              />
+            </View>
+            <View style={styles.textContainer}>
+              <Text style={[styles.accomplishmentText, { color: theme.colors.text }]}>
+                {item.description}
+              </Text>
+              <Text style={[styles.timestamp, { color: theme.colors.muted }]}>
+                {new Date(item.created_at).toLocaleTimeString()}
+              </Text>
+            </View>
+          </View>
         </View>
       </Swipeable>
     );
@@ -244,6 +319,10 @@ export default function HomeScreen() {
     inputContainer: {
       ...commonStyles.row,
       marginBottom: spacing.lg,
+    },
+    inputWrapper: {
+      flex: 1,
+      position: 'relative',
     },
     input: {
       ...commonStyles.input,
@@ -271,15 +350,20 @@ export default function HomeScreen() {
     healthItem: {
       borderLeftWidth: 4,
     },
+    deleteButtonContainer: {
+      width: 80,
+      height: '100%',
+      borderRadius: borderRadius.lg,
+      overflow: 'hidden',
+      marginVertical: 0,
+      padding: 0,
+      backgroundColor: theme.colors.error,
+    },
     deleteButton: {
       ...commonStyles.center,
-      width: 100,
-      height: '100%',
-    },
-    deleteButtonText: {
-      ...typography.body,
-      color: 'white',
-      fontWeight: 'bold',
+      width: 80,
+      height: 60,
+      backgroundColor: theme.colors.error,
     },
     itemText: {
       ...typography.body,
@@ -316,26 +400,169 @@ export default function HomeScreen() {
       color: 'white',
       fontWeight: 'bold',
     },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    countContainer: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+    },
+    countText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    accomplishmentContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      height: '100%',
+    },
+    accomplishmentItem: {
+      ...commonStyles.shadow,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+      backgroundColor: theme.colors.card,
+      height: 60,
+    },
+    iconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      ...commonStyles.center,
+    },
+    textContainer: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    accomplishmentText: {
+      ...typography.body,
+    },
+    timestamp: {
+      ...typography.caption,
+      marginTop: 2,
+    },
+    frequentAccomplishmentsContainer: {
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    frequentTitle: {
+      ...typography.caption,
+      marginBottom: spacing.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
+    frequentAccomplishmentsList: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+    },
+    frequentAccomplishmentItem: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    frequentAccomplishmentText: {
+      ...typography.caption,
+    },
+    countCard: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      marginBottom: spacing.lg,
+      alignItems: 'center',
+      ...commonStyles.shadow,
+      zIndex: 1,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-start',
+      paddingTop: 120, // Adjust this value based on your layout
+    },
+    dropdown: {
+      position: 'absolute',
+      top: '100%',
+      left: 0,
+      right: 0,
+      zIndex: 1000,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      marginTop: 4,
+      ...commonStyles.shadow,
+      elevation: 5,
+    },
+    dropdownItem: {
+      padding: spacing.sm,
+    },
+    dropdownText: {
+      ...typography.body,
+    },
   });
 
+  if (!theme) return null;
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Today's Accomplishments</Text>
-      
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <View style={[styles.countCard, { backgroundColor: theme.colors.card }]}>
+        <Text style={[styles.countText, { color: theme.colors.text }]}>
+          {accomplishments.length} accomplishment{accomplishments.length !== 1 ? 's' : ''} today!
+        </Text>
+      </View>
+
       <View style={styles.inputContainer}>
-        <TextInput
-          style={[styles.input, { 
-            backgroundColor: colors.surface,
-            color: colors.text,
-            borderColor: colors.border
-          }]}
-          placeholder="I accomplished..."
-          placeholderTextColor={colors.textSecondary}
-          value={newAccomplishment}
-          onChangeText={setNewAccomplishment}
-        />
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={[styles.input, { 
+              backgroundColor: theme.colors.surface,
+              color: theme.colors.text,
+              borderColor: theme.colors.border
+            }]}
+            placeholder="I accomplished..."
+            placeholderTextColor={theme.colors.textSecondary}
+            value={newAccomplishment}
+            onChangeText={setNewAccomplishment}
+            onSubmitEditing={addAccomplishment}
+            onFocus={() => setShowDropdown(true)}
+            onBlur={() => {
+              // Small delay to allow for touch events
+              setTimeout(() => setShowDropdown(false), 200);
+            }}
+            autoFocus={false}
+          />
+          {showDropdown && frequentAccomplishments.length > 0 && (
+            <View style={[styles.dropdown, { 
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            }]}>
+              {frequentAccomplishments.map((acc, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.dropdownItem, { 
+                    borderBottomColor: theme.colors.border,
+                    borderBottomWidth: index < frequentAccomplishments.length - 1 ? 1 : 0
+                  }]}
+                  onPress={() => {
+                    setNewAccomplishment(acc);
+                    setShowDropdown(false);
+                  }}
+                >
+                  <Text style={[styles.dropdownText, { color: theme.colors.text }]}>
+                    {acc}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
         <TouchableOpacity 
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
+          style={[styles.addButton, { backgroundColor: theme.colors.primary }]}
           onPress={addAccomplishment}
           disabled={loading}
         >
@@ -344,14 +571,14 @@ export default function HomeScreen() {
       </View>
       
       {loading ? (
-        <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
+        <ActivityIndicator style={styles.loader} color={theme.colors.primary} size="large" />
       ) : (
         <FlatList
           data={allAccomplishments}
           keyExtractor={(item, index) => item.id ? item.id.toString() : `item-${index}`}
-          renderItem={renderItem}
+          renderItem={renderAccomplishment}
           ListEmptyComponent={
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
               No accomplishments yet today.
             </Text>
           }
@@ -360,7 +587,7 @@ export default function HomeScreen() {
       
       {healthData.length > 0 && (
         <TouchableOpacity 
-          style={[styles.healthButton, { backgroundColor: colors.secondary }]}
+          style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
           onPress={saveHealthDataAsAccomplishments}
         >
           <Text style={styles.buttonText}>Save Health Data as Accomplishments</Text>
@@ -369,19 +596,19 @@ export default function HomeScreen() {
       
       <View style={styles.buttonContainer}>
         <TouchableOpacity 
-          style={[styles.questionnaireButton, { backgroundColor: colors.primary }]}
+          style={[styles.questionnaireButton, { backgroundColor: theme.colors.primary }]}
           onPress={() => navigation.navigate('Questionnaire')}
         >
           <Text style={styles.buttonText}>Daily Check-in</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
-          style={[styles.settingsButton, { backgroundColor: colors.secondary }]}
+          style={[styles.settingsButton, { backgroundColor: theme.colors.secondary }]}
           onPress={() => navigation.navigate('Settings')}
         >
           <Text style={styles.buttonText}>Settings</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }

@@ -1,16 +1,21 @@
 import { ColorSchemeName, StyleSheet } from 'react-native';
 
 export interface ThemeColors {
+  primary: string;
   background: string;
   surface: string;
-  primary: string;
-  secondary: string;
   text: string;
   textSecondary: string;
   border: string;
   error: string;
   success: string;
   warning: string;
+  info: string;
+  secondary: string;
+  accent: string;
+  muted: string;
+  highlight: string;
+  card: string;
   switchTrack: {
     false: string;
     true: string;
@@ -22,49 +27,59 @@ export interface ThemeColors {
 }
 
 export const lightColors: ThemeColors = {
-  background: '#FFFFFF',
-  surface: '#F5F5F5',
-  primary: '#4CAF50',
-  secondary: '#2196F3',
-  text: '#000000',
-  textSecondary: '#666666',
-  border: '#E0E0E0',
-  error: '#F44336',
-  success: '#4CAF50',
-  warning: '#FFC107',
+  primary: '#7C9E8F',
+  background: '#F5F7F5',
+  surface: '#FFFFFF',
+  text: '#2C3E50',
+  textSecondary: '#7C9E8F',
+  border: '#E8EDE9',
+  error: '#E8A5A5',
+  success: '#7C9E8F',
+  warning: '#F4D03F',
+  info: '#7C9E8F',
+  secondary: '#A8C0B5',
+  accent: '#D4E2D4',
+  muted: '#B8C4BE',
+  highlight: '#E8EDE9',
+  card: '#FFFFFF',
   switchTrack: {
     false: '#767577',
-    true: '#4CAF50'
+    true: '#7C9E8F',
   },
   switchThumb: {
     false: '#f4f3f4',
-    true: '#f5dd4b'
-  }
+    true: '#f5dd4b',
+  },
 };
 
 export const darkColors: ThemeColors = {
-  background: '#121212',
-  surface: '#1E1E1E',
-  primary: '#81C784',
-  secondary: '#64B5F6',
-  text: '#FFFFFF',
-  textSecondary: '#B0B0B0',
-  border: '#333333',
-  error: '#EF5350',
-  success: '#81C784',
-  warning: '#FFD54F',
+  primary: '#7C9EFF',
+  secondary: '#FFB5B5',
+  background: '#1A1B1E',
+  surface: '#2C2D30',
+  card: '#2C2D30',
+  text: '#E8EDE9',
+  textSecondary: '#A0A5A1',
+  border: '#3A3B3E',
+  error: '#FF6B6B',
+  success: '#4CAF50',
+  warning: '#FFB74D',
+  highlight: '#7C9EFF',
+  muted: '#6B7280',
+  info: '#7C9EFF',
+  accent: '#FFB5B5',
   switchTrack: {
-    false: '#767577',
-    true: '#81C784'
+    true: '#4A4B4E',
+    false: '#3A3B3E'
   },
   switchThumb: {
-    false: '#f4f3f4',
-    true: '#f5dd4b'
+    true: '#7C9EFF',
+    false: '#6B7280'
   }
 };
 
-export const getThemeColors = (theme: ColorSchemeName): ThemeColors => {
-  return theme === 'dark' ? darkColors : lightColors;
+export const getThemeColors = (isDark: boolean): ThemeColors => {
+  return isDark ? darkColors : lightColors;
 };
 
 export const spacing = {

@@ -9,7 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
-    "@doist/todoist-api-typescript": "^4.0.0-alpha.5",
+    "@doist/todoist-api-typescript": "^3.0.3",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-navigation/native": "^6.1.9",
     "@react-navigation/native-stack": "^6.11.0",

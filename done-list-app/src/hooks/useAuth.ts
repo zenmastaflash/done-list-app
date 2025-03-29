@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { useNavigation } from '@react-navigation/native';
+import { NavigationProp } from '../types/navigation';
 
 export function useAuth() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigation = useNavigation<NavigationProp>();
 
   useEffect(() => {
     // Get initial session
@@ -25,5 +28,11 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  return { session, loading };
+  const handleUnauthorized = () => {
+    if (!session) {
+      navigation.navigate('Auth');
+    }
+  };
+
+  return { session, loading, handleUnauthorized };
 }
