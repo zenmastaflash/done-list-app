@@ -4,8 +4,8 @@ import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useTheme } from '../context/ThemeContext';
-import { getThemeColors, spacing, borderRadius } from '../styles/theme';
-import { useNavigation } from '@react-navigation/native';
+import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 interface Accomplishment {
@@ -30,13 +30,14 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [healthData, setHealthData] = useState<Accomplishment[]>([]);
   const [healthConnected, setHealthConnected] = useState(false);
-  const { theme } = useTheme();
-  const colors = getThemeColors(theme);
+  const { theme, colors } = useTheme();
   
-  useEffect(() => {
-    fetchAccomplishments();
-    checkHealthConnection();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchAccomplishments();
+      checkHealthConnection();
+    }, [])
+  );
 
   const checkHealthConnection = async () => {
     try {
@@ -234,113 +235,86 @@ export default function HomeScreen() {
 
   const styles = StyleSheet.create({
     container: {
-      flex: 1,
-      padding: spacing.lg,
+      ...commonStyles.container,
     },
     title: {
-      fontSize: 24,
-      fontWeight: '700',
+      ...typography.h1,
       marginBottom: spacing.lg,
-      color: colors.text,
     },
     inputContainer: {
-      flexDirection: 'row',
+      ...commonStyles.row,
       marginBottom: spacing.lg,
     },
     input: {
+      ...commonStyles.input,
       flex: 1,
-      borderWidth: 1,
-      padding: spacing.sm,
-      borderRadius: borderRadius.md,
       marginRight: spacing.sm,
-      fontSize: 16,
-      backgroundColor: colors.surface,
-      color: colors.text,
-      borderColor: colors.border,
     },
     addButton: {
-      padding: spacing.sm,
-      borderRadius: borderRadius.md,
-      alignItems: 'center',
-      justifyContent: 'center',
+      ...commonStyles.button,
       width: 70,
-      backgroundColor: colors.primary,
     },
     addButtonText: {
+      ...typography.body,
       color: 'white',
-      fontWeight: '700',
-      fontSize: 16,
+      fontWeight: 'bold',
     },
     loader: {
       marginVertical: spacing.lg,
     },
     item: {
+      ...commonStyles.shadow,
       padding: spacing.md,
       borderRadius: borderRadius.lg,
       marginBottom: spacing.sm,
     },
     healthItem: {
       borderLeftWidth: 4,
-      borderLeftColor: colors.primary,
     },
     deleteButton: {
-      justifyContent: 'center',
-      alignItems: 'center',
+      ...commonStyles.center,
       width: 100,
       height: '100%',
-      backgroundColor: colors.error,
     },
     deleteButtonText: {
+      ...typography.body,
       color: 'white',
-      fontWeight: '700',
-      fontSize: 16,
+      fontWeight: 'bold',
     },
     itemText: {
-      fontSize: 16,
-      color: colors.text,
+      ...typography.body,
     },
     sourceText: {
-      fontSize: 12,
-      color: colors.primary,
+      ...typography.caption,
       marginTop: spacing.xs,
     },
     emptyText: {
+      ...typography.body,
       textAlign: 'center',
       marginTop: spacing.xl,
-      fontSize: 16,
-      color: colors.textSecondary,
     },
     healthButton: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      alignItems: 'center',
+      ...commonStyles.button,
       marginTop: spacing.sm,
       marginBottom: spacing.lg,
-      backgroundColor: colors.secondary,
     },
     buttonContainer: {
-      flexDirection: 'row',
+      ...commonStyles.row,
       justifyContent: 'space-between',
     },
     questionnaireButton: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      alignItems: 'center',
+      ...commonStyles.button,
       flex: 1,
       marginRight: spacing.sm,
-      backgroundColor: colors.primary,
     },
     settingsButton: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      alignItems: 'center',
+      ...commonStyles.button,
       flex: 1,
-      backgroundColor: colors.secondary,
     },
     buttonText: {
+      ...typography.body,
       color: 'white',
-      fontWeight: '700',
-      fontSize: 16,
+      fontWeight: 'bold',
     },
   });
 

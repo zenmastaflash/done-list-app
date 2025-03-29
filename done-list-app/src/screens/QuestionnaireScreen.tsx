@@ -1,9 +1,27 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Switch, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
+import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-export default function QuestionnaireScreen({ navigation }) {
-  const [responses, setResponses] = useState({
+type QuestionnaireScreenProps = {
+  navigation: NativeStackNavigationProp<any>;
+};
+
+type QuestionnaireResponses = {
+  got_out_of_bed: boolean;
+  brushed_teeth: boolean;
+  drank_water: boolean;
+  saw_sunlight: boolean;
+  moved_body: boolean;
+  connected_with_someone: boolean;
+};
+
+type ResponseKey = keyof QuestionnaireResponses;
+
+export default function QuestionnaireScreen({ navigation }: QuestionnaireScreenProps) {
+  const [responses, setResponses] = useState<QuestionnaireResponses>({
     got_out_of_bed: false,
     brushed_teeth: false,
     drank_water: false,
@@ -12,8 +30,9 @@ export default function QuestionnaireScreen({ navigation }) {
     connected_with_someone: false,
   });
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
 
-  const toggleSwitch = (key) => {
+  const toggleSwitch = (key: ResponseKey) => {
     setResponses(prev => ({
       ...prev,
       [key]: !prev[key]
@@ -78,7 +97,11 @@ export default function QuestionnaireScreen({ navigation }) {
       }
       
       Alert.alert('Success', 'Your daily check-in has been saved!');
-      navigation.navigate('Home');
+      // Reset navigation stack to Home screen
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Home' }],
+      });
     } catch (error) {
       Alert.alert('Error', 'Failed to save your check-in. Please try again.');
     } finally {
@@ -87,121 +110,118 @@ export default function QuestionnaireScreen({ navigation }) {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Daily Check-in</Text>
-      <Text style={styles.subtitle}>Let's acknowledge what you've accomplished today:</Text>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Daily Check-in</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+        Let's acknowledge what you've accomplished today:
+      </Text>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I got out of bed today</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I got out of bed today</Text>
         <Switch
           value={responses.got_out_of_bed}
           onValueChange={() => toggleSwitch('got_out_of_bed')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.got_out_of_bed ? 'true' : 'false']}
         />
       </View>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I brushed my teeth</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I brushed my teeth</Text>
         <Switch
           value={responses.brushed_teeth}
           onValueChange={() => toggleSwitch('brushed_teeth')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.brushed_teeth ? 'true' : 'false']}
         />
       </View>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I drank some water</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I drank some water</Text>
         <Switch
           value={responses.drank_water}
           onValueChange={() => toggleSwitch('drank_water')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.drank_water ? 'true' : 'false']}
         />
       </View>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I saw sunlight</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I saw sunlight</Text>
         <Switch
           value={responses.saw_sunlight}
           onValueChange={() => toggleSwitch('saw_sunlight')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.saw_sunlight ? 'true' : 'false']}
         />
       </View>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I moved my body</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I moved my body</Text>
         <Switch
           value={responses.moved_body}
           onValueChange={() => toggleSwitch('moved_body')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.moved_body ? 'true' : 'false']}
         />
       </View>
       
-      <View style={styles.questionContainer}>
-        <Text style={styles.question}>I connected with someone</Text>
+      <View style={[styles.questionContainer, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.question, { color: colors.text }]}>I connected with someone</Text>
         <Switch
           value={responses.connected_with_someone}
           onValueChange={() => toggleSwitch('connected_with_someone')}
+          trackColor={colors.switchTrack}
+          thumbColor={colors.switchThumb[responses.connected_with_someone ? 'true' : 'false']}
         />
       </View>
       
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4caf50" />
-          <Text style={styles.loadingText}>Saving your check-in...</Text>
-        </View>
-      ) : (
-        <TouchableOpacity 
-          style={styles.saveButton}
-          onPress={saveResponses}
-        >
-          <Text style={styles.saveButtonText}>Save My Day</Text>
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity 
+        style={[styles.saveButton, { backgroundColor: colors.primary }]}
+        onPress={saveResponses}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Save Check-in</Text>
+        )}
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 20,
+    ...commonStyles.container,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 10,
+    ...typography.h1,
+    marginBottom: spacing.md,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 30,
+    ...typography.body,
+    marginBottom: spacing.xl,
   },
   questionContainer: {
-    flexDirection: 'row',
+    ...commonStyles.row,
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 15,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    marginBottom: spacing.md,
   },
   question: {
-    fontSize: 16,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 50,
-  },
-  loadingText: {
-    marginTop: 10,
-    color: '#555',
+    ...typography.body,
+    flex: 1,
+    marginRight: spacing.md,
   },
   saveButton: {
-    backgroundColor: '#4caf50',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 50,
+    ...commonStyles.button,
+    marginTop: spacing.xl,
   },
-  saveButtonText: {
+  buttonText: {
+    ...typography.body,
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
   },
 });

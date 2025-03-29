@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, FlatList } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
+import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-export default function TodoistScreen({ navigation }) {
+type TodoistScreenProps = {
+  navigation: NativeStackNavigationProp<any>;
+};
+
+export default function TodoistScreen({ navigation }: TodoistScreenProps) {
   const [apiToken, setApiToken] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [completedTasks, setCompletedTasks] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const [completedTasks, setCompletedTasks] = useState<string[]>([]);
+  const { colors } = useTheme();
 
   useEffect(() => {
     // Check if we already have a token saved
@@ -36,132 +44,99 @@ export default function TodoistScreen({ navigation }) {
   };
 
   const connectTodoist = async () => {
-    if (!apiToken.trim()) {
+    if (!apiToken) {
       Alert.alert('Error', 'Please enter your Todoist API token');
       return;
     }
     
     setLoading(true);
-    
     try {
-      // In a production app, we would verify this token 
-      // is valid by making an API call to Todoist
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
       
-      // For this prototype, we'll simulate a successful connection
+      if (!userId) {
+        Alert.alert('Error', 'Not logged in');
+        setLoading(false);
+        return;
+      }
+      
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: userId,
+          todoist_token: apiToken,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      
+      if (error) throw error;
+      
       setIsConnected(true);
-      await saveApiToken(apiToken.trim());
-      await fetchCompletedTasks(apiToken.trim());
-      Alert.alert('Success', 'Connected to Todoist successfully!');
+      await fetchCompletedTasks(apiToken);
     } catch (error) {
-      console.error('Error connecting to Todoist:', error);
-      Alert.alert('Error', 'Failed to connect to Todoist. Please check your API token.');
+      console.error('Error connecting Todoist:', error);
+      Alert.alert('Error', 'Could not connect to Todoist');
     } finally {
       setLoading(false);
     }
   };
 
-  const saveApiToken = async (token) => {
-    try {
-      const user = await supabase.auth.getUser();
-      const userId = user.data.user?.id;
-      
-      if (!userId) {
-        console.error('User not logged in');
-        return;
-      }
-      
-      // Check if settings record exists
-      const { data, error: selectError } = await supabase
-        .from('user_settings')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      if (selectError && selectError.code !== 'PGRST116') {
-        console.error('Error checking for existing settings:', selectError);
-        return;
-      }
-      
-      // If record exists, update it; otherwise insert
-      const operation = data ? 
-        supabase.from('user_settings').update({
-          todoist_token: token,
-          updated_at: new Date().toISOString()
-        }).eq('user_id', userId) :
-        supabase.from('user_settings').insert({
-          user_id: userId,
-          todoist_token: token,
-          updated_at: new Date().toISOString()
-        });
-      
-      const { error } = await operation;
-      
-      if (error) {
-        console.error('Error saving token:', error);
-      }
-    } catch (error) {
-      console.error('Error saving API token:', error);
-    }
-  };
-
-  const fetchCompletedTasks = async (token) => {
+  const fetchCompletedTasks = async (token: string) => {
     setLoading(true);
     try {
-      // In a production app, we would use the Todoist API to fetch real data
-      // For this prototype, we'll use mock data
-      const mockTasks = [
-        'Complete project proposal',
-        'Reply to client emails',
-        'Schedule team meeting',
-        'Update documentation',
-        'Finish bug fixes for release'
-      ];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
       
-      setCompletedTasks(mockTasks);
+      const response = await fetch('https://api.todoist.com/rest/v2/tasks/completed', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to fetch tasks');
+      
+      const data = await response.json();
+      const todaysTasks = data.items.filter((item: any) => {
+        const completedDate = new Date(item.completed_at);
+        return completedDate >= today;
+      }).map((item: any) => item.content);
+      
+      setCompletedTasks(todaysTasks);
     } catch (error) {
-      console.error('Error fetching completed tasks:', error);
-      Alert.alert('Error', 'Could not fetch Todoist tasks.');
+      console.error('Error fetching tasks:', error);
+      Alert.alert('Error', 'Could not fetch completed tasks');
     } finally {
       setLoading(false);
     }
   };
 
   const saveAsAccomplishments = async () => {
-    if (completedTasks.length === 0) {
-      Alert.alert('No Tasks', 'There are no completed tasks to save as accomplishments.');
-      return;
-    }
-    
     setLoading(true);
-    
     try {
-      const user = await supabase.auth.getUser();
-      const userId = user.data.user?.id;
+      const userResponse = await supabase.auth.getUser();
+      const userId = userResponse.data.user?.id;
       
       if (!userId) {
         Alert.alert('Error', 'Not logged in');
+        setLoading(false);
         return;
       }
       
-      // Convert tasks to accomplishments
-      const accomplishments = completedTasks.map(task => ({
+      const items = completedTasks.map(description => ({
+        description,
         user_id: userId,
-        description: `Completed Todoist task: ${task}`,
         source: 'todoist'
       }));
       
       const { error } = await supabase
         .from('accomplishments')
-        .insert(accomplishments);
+        .insert(items);
       
-      if (error) {
-        console.error('Error saving as accomplishments:', error);
-        throw error;
-      }
+      if (error) throw error;
       
       Alert.alert('Success', 'Tasks saved as accomplishments!');
-      navigation.navigate('Home');
+      setCompletedTasks([]);
     } catch (error) {
+      console.error('Error saving tasks:', error);
       Alert.alert('Error', 'Could not save tasks as accomplishments');
     } finally {
       setLoading(false);
@@ -169,26 +144,31 @@ export default function TodoistScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Connect to Todoist</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Connect to Todoist</Text>
       
       {!isConnected ? (
         <>
-          <Text style={styles.instructions}>
+          <Text style={[styles.instructions, { color: colors.textSecondary }]}>
             To connect your Todoist account, please enter your API token.
             You can find your API token in Todoist's integration settings.
           </Text>
           
           <TextInput
-            style={styles.input}
+            style={[styles.input, { 
+              backgroundColor: colors.surface,
+              color: colors.text,
+              borderColor: colors.border
+            }]}
             placeholder="Todoist API Token"
+            placeholderTextColor={colors.textSecondary}
             value={apiToken}
             onChangeText={setApiToken}
             secureTextEntry
           />
           
           <TouchableOpacity 
-            style={styles.button}
+            style={[styles.button, { backgroundColor: colors.primary }]}
             onPress={connectTodoist}
             disabled={loading}
           >
@@ -201,30 +181,35 @@ export default function TodoistScreen({ navigation }) {
         </>
       ) : (
         <>
-          <Text style={styles.connectedText}>✅ Connected to Todoist</Text>
+          <Text style={[styles.connectedText, { color: colors.success }]}>✅ Connected to Todoist</Text>
           
-          <Text style={styles.sectionTitle}>Completed Tasks Today</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Completed Tasks Today</Text>
           
           {loading ? (
-            <ActivityIndicator style={styles.loader} color="#4caf50" size="large" />
+            <ActivityIndicator style={styles.loader} color={colors.primary} size="large" />
           ) : (
             <FlatList
               data={completedTasks}
               keyExtractor={(item, index) => `task-${index}`}
               renderItem={({ item }) => (
-                <View style={styles.taskItem}>
-                  <Text style={styles.taskText}>{item}</Text>
+                <View style={[styles.taskItem, { 
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border
+                }]}>
+                  <Text style={[styles.taskText, { color: colors.text }]}>{item}</Text>
                 </View>
               )}
               ListEmptyComponent={
-                <Text style={styles.emptyText}>No completed tasks today.</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  No completed tasks today.
+                </Text>
               }
               style={styles.list}
             />
           )}
           
           <TouchableOpacity 
-            style={styles.button}
+            style={[styles.button, { backgroundColor: colors.primary }]}
             onPress={() => fetchCompletedTasks(apiToken)}
             disabled={loading}
           >
@@ -232,7 +217,7 @@ export default function TodoistScreen({ navigation }) {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.button, styles.saveButton]}
+            style={[styles.button, { backgroundColor: colors.secondary }]}
             onPress={saveAsAccomplishments}
             disabled={loading || completedTasks.length === 0}
           >
@@ -246,72 +231,57 @@ export default function TodoistScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 20,
+    ...commonStyles.container,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    ...typography.h1,
+    marginBottom: spacing.md,
   },
   instructions: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 20,
+    ...typography.body,
+    marginBottom: spacing.xl,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    marginBottom: 15,
-    borderRadius: 5,
-    fontSize: 16,
+    ...commonStyles.input,
+    marginBottom: spacing.lg,
   },
   button: {
-    backgroundColor: '#4caf50',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  saveButton: {
-    backgroundColor: '#2196f3',
+    ...commonStyles.button,
+    marginBottom: spacing.md,
   },
   buttonText: {
+    ...typography.body,
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
   },
   connectedText: {
-    fontSize: 18,
-    color: '#4caf50',
-    marginBottom: 20,
+    ...typography.h3,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    color: '#555',
-  },
-  list: {
-    maxHeight: 300,
-    marginBottom: 20,
-  },
-  taskItem: {
-    backgroundColor: '#f9f9f9',
-    padding: 15,
-    borderRadius: 5,
-    marginBottom: 10,
-  },
-  taskText: {
-    fontSize: 16,
-  },
-  emptyText: {
-    textAlign: 'center',
-    padding: 20,
-    color: '#888',
+    ...typography.h2,
+    marginBottom: spacing.md,
   },
   loader: {
-    marginVertical: 20,
+    marginVertical: spacing.xl,
+  },
+  list: {
+    flex: 1,
+    marginBottom: spacing.lg,
+  },
+  taskItem: {
+    ...commonStyles.shadow,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+  },
+  taskText: {
+    ...typography.body,
+  },
+  emptyText: {
+    ...typography.body,
+    textAlign: 'center',
+    marginTop: spacing.xl,
   },
 });

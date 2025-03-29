@@ -1,19 +1,15 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  ActivityIndicator 
-} from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
+import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
+import { AuthError } from '@supabase/supabase-js';
 
 export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
 
   const signInWithEmail = async () => {
     if (!email || !password) {
@@ -27,13 +23,11 @@ export default function AuthScreen() {
         email,
         password,
       });
-
-      if (error) {
-        Alert.alert('Error', error.message);
-      }
-    } catch (e) {
-      console.error('Sign in error:', e);
-      Alert.alert('Error', 'An unexpected error occurred');
+      
+      if (error) throw error;
+    } catch (err) {
+      const error = err as AuthError;
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
@@ -45,42 +39,37 @@ export default function AuthScreen() {
       return;
     }
     
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
-    
     setLoading(true);
     try {
       const { error } = await supabase.auth.signUp({
         email,
         password,
       });
-
-      if (error) {
-        Alert.alert('Error', error.message);
-      } else {
-        Alert.alert(
-          'Check Your Email',
-          'We sent you a confirmation link. Please check your email to complete sign up.'
-        );
-      }
-    } catch (e) {
-      console.error('Sign up error:', e);
-      Alert.alert('Error', 'An unexpected error occurred');
+      
+      if (error) throw error;
+      
+      Alert.alert('Success', 'Check your email for the confirmation link!');
+    } catch (err) {
+      const error = err as AuthError;
+      Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Done List</Text>
-      <Text style={styles.subtitle}>Track what you've accomplished</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Done List</Text>
+      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Track what you've accomplished</Text>
       
       <TextInput
-        style={styles.input}
+        style={[styles.input, { 
+          backgroundColor: colors.surface,
+          color: colors.text,
+          borderColor: colors.border
+        }]}
         placeholder="Email"
+        placeholderTextColor={colors.textSecondary}
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -88,15 +77,20 @@ export default function AuthScreen() {
       />
       
       <TextInput
-        style={styles.input}
+        style={[styles.input, { 
+          backgroundColor: colors.surface,
+          color: colors.text,
+          borderColor: colors.border
+        }]}
         placeholder="Password"
+        placeholderTextColor={colors.textSecondary}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
       />
       
       <TouchableOpacity 
-        style={[styles.button, loading && styles.disabledButton]}
+        style={[styles.button, { backgroundColor: colors.primary }]}
         onPress={signInWithEmail}
         disabled={loading}
       >
@@ -108,7 +102,7 @@ export default function AuthScreen() {
       </TouchableOpacity>
       
       <TouchableOpacity 
-        style={[styles.button, styles.signUpButton, loading && styles.disabledButton]}
+        style={[styles.button, { backgroundColor: colors.secondary }]}
         onPress={signUpWithEmail}
         disabled={loading}
       >
@@ -120,47 +114,30 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'center',
-    backgroundColor: '#fff',
+    ...commonStyles.container,
+    ...commonStyles.center,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
+    ...typography.h1,
+    marginBottom: spacing.sm,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 30,
-    textAlign: 'center',
+    ...typography.body,
+    marginBottom: spacing.xl,
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    marginBottom: 15,
-    borderRadius: 5,
-    fontSize: 16,
+    ...commonStyles.input,
+    width: '100%',
+    marginBottom: spacing.md,
   },
   button: {
-    backgroundColor: '#4caf50',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  signUpButton: {
-    backgroundColor: '#2196f3',
-  },
-  disabledButton: {
-    opacity: 0.7,
+    ...commonStyles.button,
+    width: '100%',
+    marginBottom: spacing.md,
   },
   buttonText: {
+    ...typography.body,
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
   },
 });
