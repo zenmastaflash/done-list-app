@@ -13,10 +13,11 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import TodoistScreen from './src/screens/TodoistScreen';
 import RemindersScreen from './src/screens/RemindersScreen';
 import { View, Text, ActivityIndicator } from 'react-native';
-import { ThemeProvider } from './src/context/ThemeContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { useAuth } from './src/hooks/useAuth';
+import { RootStackParamList } from './src/types/navigation';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const LoadingScreen = () => (
   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -44,18 +45,32 @@ const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetError
 
 function NavigationContent() {
   const { session, loading } = useAuth();
+  const { colors } = useTheme();
 
   if (loading) {
     return <LoadingScreen />;
   }
 
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: colors.background,
+        },
+        headerTintColor: colors.text,
+        headerTitleStyle: {
+          color: colors.text,
+        },
+      }}
+    >
       {!session ? (
         <Stack.Screen 
-          name="Auth" 
-          component={AuthScreen}
-          options={{ headerShown: false }}
+          name="Home" 
+          component={HomeScreen}
+          options={{
+            title: 'Done List',
+            headerShown: false,
+          }}
         />
       ) : (
         <>
@@ -64,13 +79,7 @@ function NavigationContent() {
             component={HomeScreen}
             options={{
               title: 'Done List',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
+              headerShown: false,
             }}
           />
           <Stack.Screen 
@@ -78,13 +87,6 @@ function NavigationContent() {
             component={QuestionnaireScreen}
             options={{
               title: 'Daily Check-in',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
             }}
           />
           <Stack.Screen 
@@ -92,13 +94,6 @@ function NavigationContent() {
             component={SettingsScreen}
             options={{
               title: 'Settings',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
             }}
           />
           <Stack.Screen 
@@ -106,13 +101,6 @@ function NavigationContent() {
             component={TodoistScreen}
             options={{
               title: 'Connect Todoist',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
             }}
           />
           <Stack.Screen 
@@ -120,18 +108,24 @@ function NavigationContent() {
             component={RemindersScreen}
             options={{
               title: 'Connect Reminders',
-              headerStyle: {
-                backgroundColor: '#f4511e',
-              },
-              headerTintColor: '#fff',
-              headerTitleStyle: {
-                fontWeight: 'bold',
-              },
             }}
           />
         </>
       )}
     </Stack.Navigator>
+  );
+}
+
+function MainContent() {
+  const { colors } = useTheme();
+  
+  return (
+    <>
+      <StatusBar style="auto" backgroundColor={colors.background} />
+      <NavigationContainer>
+        <NavigationContent />
+      </NavigationContainer>
+    </>
   );
 }
 
@@ -158,40 +152,35 @@ export default function App() {
     initApp();
   }, []);
 
-  const AppContent = () => {
-    if (error) {
-      return (
+  if (error) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <ErrorFallback error={error} resetErrorBoundary={() => setError(null)} />
         </SafeAreaProvider>
-      );
-    }
+      </GestureHandlerRootView>
+    );
+  }
 
-    if (!isInitialized) {
-      return (
+  if (!isInitialized) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <LoadingScreen />
         </SafeAreaProvider>
-      );
-    }
-
-    return (
-      <ErrorBoundary FallbackComponent={ErrorFallback}>
-        <SafeAreaProvider>
-          <ThemeProvider>
-            <NavigationContainer>
-              <NavigationContent />
-              <StatusBar style="auto" />
-            </NavigationContainer>
-          </ThemeProvider>
-        </SafeAreaProvider>
-      </ErrorBoundary>
+      </GestureHandlerRootView>
     );
-  };
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppContent />
+      <ErrorBoundary FallbackComponent={ErrorFallback}>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <MainContent />
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }
