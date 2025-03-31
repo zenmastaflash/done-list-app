@@ -1,16 +1,30 @@
 import { Platform } from 'react-native';
-import AppleHealthKit, {
-  HealthInputOptions,
-  HealthKitPermissions,
-} from 'react-native-health';
-import {
-  initialize,
-  requestPermission,
-  readRecords,
-  Permission,
-} from 'react-native-health-connect';
+import Constants from 'expo-constants';
+import { HealthInputOptions, HealthKitPermissions } from 'react-native-health';
+import { Permission } from 'react-native-health-connect';
 
-const IOS_PERMS = {
+// Detect if we're running in Expo Go to avoid native module errors
+const isExpoGo = Constants.appOwnership === 'expo';
+
+// Only import health libraries if not in Expo Go
+let AppleHealthKit: any = null;
+let HealthConnectModule: any = null;
+
+if (!isExpoGo) {
+  try {
+    if (Platform.OS === 'ios') {
+      const RNHealth = require('react-native-health');
+      AppleHealthKit = RNHealth.default;
+    } else if (Platform.OS === 'android') {
+      HealthConnectModule = require('react-native-health-connect');
+    }
+  } catch (error) {
+    console.log('Health libraries not available:', error);
+  }
+}
+
+// Define permission constants only if modules are available
+const IOS_PERMS = AppleHealthKit ? {
   permissions: {
     read: [
       AppleHealthKit.Constants.Permissions.StepCount,
@@ -19,13 +33,13 @@ const IOS_PERMS = {
     ],
     write: [],
   },
-} as HealthKitPermissions;
+} as HealthKitPermissions : null;
 
-const ANDROID_PERMS: Permission[] = [
+const ANDROID_PERMS = HealthConnectModule ? [
   { accessType: 'read', recordType: 'Steps' },
   { accessType: 'read', recordType: 'Distance' },
   { accessType: 'read', recordType: 'ActiveCaloriesBurned' }
-];
+] as Permission[] : null;
 
 export class HealthService {
   private static instance: HealthService;
@@ -41,11 +55,17 @@ export class HealthService {
   }
 
   async isAvailable(): Promise<boolean> {
+    // If in Expo Go, health features are not available
+    if (isExpoGo) {
+      console.log('Health features not available in Expo Go');
+      return false;
+    }
+    
     if (Platform.OS === 'ios') {
-      return true;
+      return !!AppleHealthKit;
     } else if (Platform.OS === 'android') {
       try {
-        return await initialize();
+        return !!HealthConnectModule && await HealthConnectModule.initialize();
       } catch (error) {
         console.error('[ERROR] Health Connect not available:', error);
         return false;
@@ -57,7 +77,7 @@ export class HealthService {
   async requestPermissions(): Promise<boolean> {
     if (!await this.isAvailable()) return false;
     
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && AppleHealthKit && IOS_PERMS) {
       return new Promise((resolve) => {
         AppleHealthKit.initHealthKit(IOS_PERMS, (error: string) => {
           if (error) {
@@ -68,9 +88,9 @@ export class HealthService {
           resolve(true);
         });
       });
-    } else if (Platform.OS === 'android') {
+    } else if (Platform.OS === 'android' && HealthConnectModule && ANDROID_PERMS) {
       try {
-        const permissions = await requestPermission(ANDROID_PERMS);
+        const permissions = await HealthConnectModule.requestPermission(ANDROID_PERMS);
         this.initialized = permissions.length > 0;
         return this.initialized;
       } catch (error) {
@@ -82,9 +102,9 @@ export class HealthService {
   }
 
   private async getStepsToday(): Promise<number> {
-    if (!this.initialized) return 0;
+    if (!this.initialized || !await this.isAvailable()) return 0;
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && AppleHealthKit) {
       const options = {
         date: new Date().toISOString(),
       } as HealthInputOptions;
@@ -104,13 +124,13 @@ export class HealthService {
           }
         );
       });
-    } else if (Platform.OS === 'android') {
+    } else if (Platform.OS === 'android' && HealthConnectModule) {
       try {
         const today = new Date();
         const startOfDay = new Date(today);
         startOfDay.setHours(0, 0, 0, 0);
         
-        const response = await readRecords('Steps', {
+        const response = await HealthConnectModule.readRecords('Steps', {
           timeRangeFilter: {
             operator: 'between',
             startTime: startOfDay.toISOString(),
@@ -129,9 +149,9 @@ export class HealthService {
   }
 
   private async getDistanceToday(): Promise<number> {
-    if (!this.initialized) return 0;
+    if (!this.initialized || !await this.isAvailable()) return 0;
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && AppleHealthKit) {
       const options = {
         date: new Date().toISOString(),
         unit: 'mile',
@@ -152,13 +172,13 @@ export class HealthService {
           }
         );
       });
-    } else if (Platform.OS === 'android') {
+    } else if (Platform.OS === 'android' && HealthConnectModule) {
       try {
         const today = new Date();
         const startOfDay = new Date(today);
         startOfDay.setHours(0, 0, 0, 0);
         
-        const response = await readRecords('Distance', {
+        const response = await HealthConnectModule.readRecords('Distance', {
           timeRangeFilter: {
             operator: 'between',
             startTime: startOfDay.toISOString(),
@@ -177,9 +197,9 @@ export class HealthService {
   }
 
   private async getActiveCaloriesToday(): Promise<number> {
-    if (!this.initialized) return 0;
+    if (!this.initialized || !await this.isAvailable()) return 0;
 
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' && AppleHealthKit) {
       const options = {
         date: new Date().toISOString(),
       } as HealthInputOptions;
@@ -199,13 +219,13 @@ export class HealthService {
           }
         );
       });
-    } else if (Platform.OS === 'android') {
+    } else if (Platform.OS === 'android' && HealthConnectModule) {
       try {
         const today = new Date();
         const startOfDay = new Date(today);
         startOfDay.setHours(0, 0, 0, 0);
         
-        const response = await readRecords('ActiveCaloriesBurned', {
+        const response = await HealthConnectModule.readRecords('ActiveCaloriesBurned', {
           timeRangeFilter: {
             operator: 'between',
             startTime: startOfDay.toISOString(),
@@ -249,7 +269,7 @@ export class HealthService {
     } catch (error) {
       console.error('[ERROR] Failed to generate health accomplishments:', error);
     }
-
+    
     return accomplishments;
   }
 

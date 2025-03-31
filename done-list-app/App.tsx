@@ -65,10 +65,9 @@ function NavigationContent() {
     >
       {!session ? (
         <Stack.Screen 
-          name="Home" 
-          component={HomeScreen}
+          name="Auth" 
+          component={AuthScreen}
           options={{
-            title: 'Done List',
             headerShown: false,
           }}
         />
