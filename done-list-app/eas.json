@@ -34,15 +34,19 @@
       "ios": {
         "buildConfiguration": "Release",
         "resourceClass": "m-medium"
+      },
+      "env": {
+        "SUPABASE_URL": "FROM_SECRET_SUPABASE_URL",
+        "SUPABASE_ANON_KEY": "FROM_SECRET_SUPABASE_ANON_KEY"
       }
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID_EMAIL",
-        "ascAppId": "APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_TEAM_ID"
+        "appleId": "kotterst@gmail.com",
+        "ascAppId": "6476821825",
+        "appleTeamId": "RL25UV5HZ6"
       }
     }
   }

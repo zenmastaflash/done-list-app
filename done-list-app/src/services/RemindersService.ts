@@ -1,7 +1,5 @@
 import { Platform } from 'react-native';
-import { NativeModules } from 'react-native';
-
-const { RemindersModule } = NativeModules;
+import RNReminders from '@wiicamp/react-native-reminders';
 
 export class RemindersService {
   private static instance: RemindersService;
@@ -21,8 +19,8 @@ export class RemindersService {
 
     try {
       if (Platform.OS === 'ios') {
-        const hasPermission = await RemindersModule.requestPermission();
-        if (!hasPermission) {
+        const authStatus = await RNReminders.requestPermission();
+        if (!authStatus) {
           console.error('Reminders permission not granted');
           return false;
         }
@@ -45,7 +43,7 @@ export class RemindersService {
     }
 
     try {
-      const reminders = await RemindersModule.getReminders();
+      const reminders = await RNReminders.getReminders();
       return reminders;
     } catch (error) {
       console.error('Failed to get reminders:', error);
@@ -62,11 +60,14 @@ export class RemindersService {
     }
 
     try {
-      const reminder = await RemindersModule.createReminder({
+      const reminderId = await RNReminders.createReminder({
         title,
         dueDate: dueDate?.toISOString(),
+        priority: 0,
+        notes: '',
+        list: 'Default'
       });
-      return reminder.id;
+      return reminderId;
     } catch (error) {
       console.error('Failed to create reminder:', error);
       throw error;
@@ -82,7 +83,14 @@ export class RemindersService {
     }
 
     try {
-      await RemindersModule.updateReminder(id, updates);
+      await RNReminders.updateReminder({
+        id,
+        title: updates.title,
+        dueDate: updates.dueDate?.toISOString(),
+        priority: updates.priority || 0,
+        notes: updates.notes || '',
+        list: updates.list || 'Default'
+      });
     } catch (error) {
       console.error('Failed to update reminder:', error);
       throw error;
@@ -98,7 +106,7 @@ export class RemindersService {
     }
 
     try {
-      await RemindersModule.deleteReminder(id);
+      await RNReminders.deleteReminder(id);
     } catch (error) {
       console.error('Failed to delete reminder:', error);
       throw error;

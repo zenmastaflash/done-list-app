@@ -2,7 +2,7 @@
   "expo": {
     "name": "Done List",
     "slug": "done-list-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.donelist.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSHealthShareUsageDescription": "This app requires access to your health data to track your daily activities and achievements.",
         "NSHealthUpdateUsageDescription": "This app requires access to update your health data for tracking achievements.",
@@ -36,8 +36,7 @@
         "com.apple.developer.healthkit.access": [
           "health-records",
           "health-records"
-        ],
-        "com.apple.developer.reminders": true
+        ]
       }
     },
     "android": {
