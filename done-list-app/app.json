@@ -17,13 +17,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.donelist.app",
-      "buildNumber": "9",
+      "buildNumber": "13",
       "infoPlist": {
         "NSHealthShareUsageDescription": "This app requires access to your health data to track your daily activities and achievements.",
         "NSHealthUpdateUsageDescription": "This app requires access to update your health data for tracking achievements.",
         "NSRemindersUsageDescription": "This app requires access to your reminders to track completed tasks as achievements.",
         "UIBackgroundModes": [
-          "fetch",
           "fetch"
         ],
         "NSAppTransportSecurity": {
@@ -34,7 +33,6 @@
       "entitlements": {
         "com.apple.developer.healthkit": true,
         "com.apple.developer.healthkit.access": [
-          "health-records",
           "health-records"
         ]
       }
@@ -64,7 +62,8 @@
             "deploymentTarget": "17.0"
           }
         }
-      ]
+      ],
+      "react-native-health"
     ],
     "extra": {
       "eas": {

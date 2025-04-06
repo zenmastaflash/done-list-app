@@ -30,6 +30,7 @@ interface ReminderUpdate {
 export class RemindersService {
   private static instance: RemindersService;
   private isInitialized: boolean = false;
+  private authStatus: string = 'notDetermined';
 
   private constructor() {}
 
@@ -45,9 +46,12 @@ export class RemindersService {
 
     try {
       if (Platform.OS === 'ios') {
-        const authStatus = await (RNReminders as any).requestPermission();
-        if (!authStatus) {
-          console.error('Reminders permission not granted');
+        // Request authorization for reminders
+        const status = await (RNReminders as any).requestPermission();
+        this.authStatus = status;
+        
+        if (status !== 'authorized') {
+          console.error('Reminders permission not granted. Status:', status);
           return false;
         }
       }
@@ -69,8 +73,23 @@ export class RemindersService {
     }
 
     try {
-      const reminders = await (RNReminders as any).getReminders();
-      return reminders;
+      // Get reminders with proper error handling
+      const reminders = await (RNReminders as any).getReminders({
+        startDate: new Date().toISOString(),
+        endDate: new Date().toISOString(),
+        completed: true
+      });
+      
+      return reminders.map((reminder: any) => ({
+        id: reminder.id,
+        title: reminder.title,
+        dueDate: reminder.dueDate,
+        notes: reminder.notes,
+        priority: reminder.priority,
+        list: reminder.list,
+        completed: reminder.completed,
+        completionDate: reminder.completionDate
+      }));
     } catch (error) {
       console.error('Failed to get reminders:', error);
       throw error;
@@ -100,7 +119,7 @@ export class RemindersService {
     }
   }
 
-  async updateReminder(id: string, updates: any): Promise<void> {
+  async updateReminder(id: string, updates: ReminderUpdate): Promise<void> {
     if (!this.isInitialized) {
       const initialized = await this.initialize();
       if (!initialized) {
@@ -113,9 +132,9 @@ export class RemindersService {
         id,
         title: updates.title,
         dueDate: updates.dueDate?.toISOString(),
-        priority: updates.priority || 0,
+        priority: 0,
         notes: updates.notes || '',
-        list: updates.list || 'Default'
+        list: 'Default'
       });
     } catch (error) {
       console.error('Failed to update reminder:', error);
@@ -137,5 +156,9 @@ export class RemindersService {
       console.error('Failed to delete reminder:', error);
       throw error;
     }
+  }
+
+  getAuthorizationStatus(): string {
+    return this.authStatus;
   }
 } 

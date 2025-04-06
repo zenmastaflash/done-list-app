@@ -1,287 +1,175 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
-import { HealthInputOptions, HealthKitPermissions } from 'react-native-health';
-import { Permission } from 'react-native-health-connect';
+import AppleHealthKit, {
+  HealthKitPermissions,
+  HealthValue,
+} from 'react-native-health';
 
-// Detect if we're running in Expo Go to avoid native module errors
-const isExpoGo = Constants.appOwnership === 'expo';
-
-// Only import health libraries if not in Expo Go
-let AppleHealthKit: any = null;
-let HealthConnectModule: any = null;
-
-if (!isExpoGo) {
-  try {
-    if (Platform.OS === 'ios') {
-      const RNHealth = require('react-native-health');
-      AppleHealthKit = RNHealth.default;
-    } else if (Platform.OS === 'android') {
-      HealthConnectModule = require('react-native-health-connect');
-    }
-  } catch (error) {
-    console.log('Health libraries not available:', error);
-  }
-}
-
-// Define permission constants only if modules are available
-const IOS_PERMS = AppleHealthKit ? {
+// Define the permissions your app will request
+const PERMISSIONS = {
   permissions: {
     read: [
       AppleHealthKit.Constants.Permissions.StepCount,
       AppleHealthKit.Constants.Permissions.DistanceWalkingRunning,
       AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+      AppleHealthKit.Constants.Permissions.AppleExerciseTime,
+      AppleHealthKit.Constants.Permissions.FlightsClimbed,
     ],
     write: [],
   },
-} as HealthKitPermissions : null;
-
-const ANDROID_PERMS = HealthConnectModule ? [
-  { accessType: 'read', recordType: 'Steps' },
-  { accessType: 'read', recordType: 'Distance' },
-  { accessType: 'read', recordType: 'ActiveCaloriesBurned' }
-] as Permission[] : null;
+} as HealthKitPermissions;
 
 export class HealthService {
-  private static instance: HealthService;
-  private initialized = false;
+  static isInitialized = false;
 
-  private constructor() {}
-
-  public static getInstance(): HealthService {
-    if (!HealthService.instance) {
-      HealthService.instance = new HealthService();
-    }
-    return HealthService.instance;
-  }
-
-  async isAvailable(): Promise<boolean> {
-    // If in Expo Go, health features are not available
-    if (isExpoGo) {
-      console.log('Health features not available in Expo Go');
+  // Check if Health is available on device
+  static async isAvailable(): Promise<boolean> {
+    // For iOS devices only
+    if (Platform.OS !== 'ios') {
+      console.log('HealthKit not available: Not iOS device');
       return false;
     }
     
-    if (Platform.OS === 'ios') {
-      return !!AppleHealthKit;
-    } else if (Platform.OS === 'android') {
-      try {
-        return !!HealthConnectModule && await HealthConnectModule.initialize();
-      } catch (error) {
-        console.error('[ERROR] Health Connect not available:', error);
-        return false;
-      }
-    }
-    return false;
+    // Try to initialize HealthKit to see if it's really available
+    return await this.initialize();
   }
 
-  async requestPermissions(): Promise<boolean> {
-    if (!await this.isAvailable()) return false;
+  // Initialize HealthKit
+  static async initialize(): Promise<boolean> {
+    if (Platform.OS !== 'ios') {
+      return false;
+    }
+
+    if (this.isInitialized) {
+      console.log('HealthKit already initialized');
+      return true;
+    }
+
+    console.log('Initializing HealthKit...');
+    return new Promise((resolve) => {
+      AppleHealthKit.initHealthKit(PERMISSIONS, (error: string) => {
+        if (error) {
+          console.error('Error initializing HealthKit:', error);
+          this.isInitialized = false;
+          resolve(false);
+          return;
+        }
+        
+        console.log('HealthKit initialized successfully');
+        this.isInitialized = true;
+        resolve(true);
+      });
+    });
+  }
+
+  // Request permissions for Health data
+  static async requestPermissions(): Promise<boolean> {
+    console.log('Requesting HealthKit permissions...');
+    if (!await this.isAvailable()) {
+      console.log('HealthKit not available for permissions request');
+      return false;
+    }
     
-    if (Platform.OS === 'ios' && AppleHealthKit && IOS_PERMS) {
-      return new Promise((resolve) => {
-        AppleHealthKit.initHealthKit(IOS_PERMS, (error: string) => {
-          if (error) {
-            console.log('[ERROR] Cannot grant HealthKit permissions');
-            resolve(false);
-          }
-          this.initialized = true;
-          resolve(true);
-        });
-      });
-    } else if (Platform.OS === 'android' && HealthConnectModule && ANDROID_PERMS) {
-      try {
-        const permissions = await HealthConnectModule.requestPermission(ANDROID_PERMS);
-        this.initialized = permissions.length > 0;
-        return this.initialized;
-      } catch (error) {
-        console.error('[ERROR] Cannot grant Health Connect permissions:', error);
-        return false;
-      }
-    }
-    return false;
+    // Permission is already requested during initialization
+    console.log('HealthKit permissions status:', this.isInitialized);
+    return this.isInitialized;
   }
 
-  private async getStepsToday(): Promise<number> {
-    if (!this.initialized || !await this.isAvailable()) return 0;
-
-    if (Platform.OS === 'ios' && AppleHealthKit) {
-      const options = {
-        date: new Date().toISOString(),
-      } as HealthInputOptions;
-
-      return new Promise((resolve) => {
-        AppleHealthKit.getStepCount(
-          options,
-          (err: string, results: any) => {
-            if (err) {
-              console.log('[ERROR] Cannot get steps:', err);
-              resolve(0);
-            }
-            const totalSteps = Array.isArray(results) 
-              ? results.reduce((sum, item) => sum + (item.value || 0), 0)
-              : results.value || 0;
-            resolve(totalSteps);
-          }
-        );
-      });
-    } else if (Platform.OS === 'android' && HealthConnectModule) {
-      try {
-        const today = new Date();
-        const startOfDay = new Date(today);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const response = await HealthConnectModule.readRecords('Steps', {
-          timeRangeFilter: {
-            operator: 'between',
-            startTime: startOfDay.toISOString(),
-            endTime: today.toISOString()
-          }
-        });
-        
-        if (response.records && response.records.length > 0) {
-          return (response.records[0] as any).count;
-        }
-      } catch (error) {
-        console.error('[ERROR] Cannot get steps:', error);
-      }
-    }
-    return 0;
-  }
-
-  private async getDistanceToday(): Promise<number> {
-    if (!this.initialized || !await this.isAvailable()) return 0;
-
-    if (Platform.OS === 'ios' && AppleHealthKit) {
-      const options = {
-        date: new Date().toISOString(),
-        unit: 'mile',
-      } as HealthInputOptions;
-
-      return new Promise((resolve) => {
-        AppleHealthKit.getDistanceWalkingRunning(
-          options,
-          (err: string, results: any) => {
-            if (err) {
-              console.log('[ERROR] Cannot get distance:', err);
-              resolve(0);
-            }
-            const totalDistance = Array.isArray(results)
-              ? results.reduce((sum, item) => sum + (item.value || 0), 0)
-              : results.value || 0;
-            resolve(totalDistance);
-          }
-        );
-      });
-    } else if (Platform.OS === 'android' && HealthConnectModule) {
-      try {
-        const today = new Date();
-        const startOfDay = new Date(today);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const response = await HealthConnectModule.readRecords('Distance', {
-          timeRangeFilter: {
-            operator: 'between',
-            startTime: startOfDay.toISOString(),
-            endTime: today.toISOString()
-          }
-        });
-        
-        if (response.records && response.records.length > 0) {
-          return ((response.records[0] as any).distance / 1000); // Convert to km
-        }
-      } catch (error) {
-        console.error('[ERROR] Cannot get distance:', error);
-      }
-    }
-    return 0;
-  }
-
-  private async getActiveCaloriesToday(): Promise<number> {
-    if (!this.initialized || !await this.isAvailable()) return 0;
-
-    if (Platform.OS === 'ios' && AppleHealthKit) {
-      const options = {
-        date: new Date().toISOString(),
-      } as HealthInputOptions;
-
-      return new Promise((resolve) => {
-        AppleHealthKit.getActiveEnergyBurned(
-          options,
-          (err: string, results: any) => {
-            if (err) {
-              console.log('[ERROR] Cannot get calories:', err);
-              resolve(0);
-            }
-            const totalCalories = Array.isArray(results)
-              ? results.reduce((sum, item) => sum + (item.value || 0), 0)
-              : results.value || 0;
-            resolve(totalCalories);
-          }
-        );
-      });
-    } else if (Platform.OS === 'android' && HealthConnectModule) {
-      try {
-        const today = new Date();
-        const startOfDay = new Date(today);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const response = await HealthConnectModule.readRecords('ActiveCaloriesBurned', {
-          timeRangeFilter: {
-            operator: 'between',
-            startTime: startOfDay.toISOString(),
-            endTime: today.toISOString()
-          }
-        });
-        
-        if (response.records && response.records.length > 0) {
-          return Math.round((response.records[0] as any).energy.inKilocalories);
-        }
-      } catch (error) {
-        console.error('[ERROR] Cannot get calories:', error);
-      }
-    }
-    return 0;
-  }
-
-  async generateAccomplishments(): Promise<string[]> {
-    if (!await this.isAvailable() || !this.initialized) {
+  // Generate health accomplishments from real HealthKit data
+  static async generateAccomplishments(): Promise<string[]> {
+    console.log('Generating health accomplishments...');
+    if (!await this.isAvailable()) {
+      console.log('HealthKit not available');
       return [];
     }
-
-    const accomplishments: string[] = [];
     
     try {
-      const steps = await this.getStepsToday();
+      const options = {
+        date: new Date().toISOString(),
+      };
+      
+      console.log('Fetching health data with options:', options);
+      
+      // Get steps data
+      const steps = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getStepCount(options, (err: string, results: { value: number }) => {
+          if (err) {
+            console.error('Error getting steps:', err);
+            reject(err);
+            return;
+          }
+          console.log('Steps fetched:', results.value);
+          resolve(results.value);
+        });
+      });
+
+      // Get active energy burned
+      const activeEnergy = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getActiveEnergyBurned(options, (err: string, results: HealthValue[]) => {
+          if (err) {
+            console.error('Error getting active energy:', err);
+            reject(err);
+            return;
+          }
+          console.log('Active energy fetched:', results[0]?.value);
+          resolve(results[0]?.value || 0);
+        });
+      });
+
+      // Get exercise time
+      const exerciseTime = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getAppleExerciseTime(options, (err: string, results: HealthValue[]) => {
+          if (err) {
+            console.error('Error getting exercise time:', err);
+            reject(err);
+            return;
+          }
+          console.log('Exercise time fetched:', results[0]?.value);
+          resolve(results[0]?.value || 0);
+        });
+      });
+
+      // Get flights climbed
+      const flightsClimbed = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getFlightsClimbed(options, (err: string, results: { value: number }) => {
+          if (err) {
+            console.error('Error getting flights climbed:', err);
+            reject(err);
+            return;
+          }
+          console.log('Flights climbed fetched:', results.value);
+          resolve(results.value);
+        });
+      });
+
+      const accomplishments: string[] = [];
+      
       if (steps > 0) {
-        accomplishments.push(`Walked ${steps.toLocaleString()} steps today`);
+        accomplishments.push(`Walked ${steps} steps today`);
+      }
+      
+      if (activeEnergy > 0) {
+        accomplishments.push(`Burned ${Math.round(activeEnergy)} calories through activity`);
+      }
+      
+      if (exerciseTime > 0) {
+        const minutes = Math.round(exerciseTime / 60);
+        accomplishments.push(`Exercised for ${minutes} minutes today`);
+      }
+      
+      if (flightsClimbed > 0) {
+        accomplishments.push(`Climbed ${flightsClimbed} flights of stairs today`);
       }
 
-      const distance = await this.getDistanceToday();
-      if (distance > 0) {
-        const unit = Platform.OS === 'ios' ? 'miles' : 'km';
-        accomplishments.push(`Walked ${distance.toFixed(1)} ${unit} today`);
-      }
-
-      const calories = await this.getActiveCaloriesToday();
-      if (calories > 0) {
-        accomplishments.push(`Burned ${calories.toFixed(0)} active calories today`);
-      }
+      console.log('Generated health accomplishments:', accomplishments);
+      return accomplishments;
     } catch (error) {
-      console.error('[ERROR] Failed to generate health accomplishments:', error);
+      console.error('Error generating health accomplishments:', error);
+      return [];
     }
-    
-    return accomplishments;
   }
 
-  public static async isAvailable(): Promise<boolean> {
-    return HealthService.getInstance().isAvailable();
-  }
-
-  public static async requestPermissions(): Promise<boolean> {
-    return HealthService.getInstance().requestPermissions();
-  }
-
-  public static async generateAccomplishments(): Promise<string[]> {
-    return HealthService.getInstance().generateAccomplishments();
+  // Remove mock data generation
+  private static generateMockAccomplishments(): string[] {
+    return [];
   }
 }
