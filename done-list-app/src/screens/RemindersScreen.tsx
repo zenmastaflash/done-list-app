@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../context/ThemeContext';
 import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RemindersService } from '../services/RemindersService';
 
 type RemindersScreenProps = {
   navigation: NativeStackNavigationProp<any>;
@@ -12,6 +13,7 @@ type RemindersScreenProps = {
 interface Reminder {
   id: string;
   title: string;
+  completionDate?: string;
 }
 
 export default function RemindersScreen({ navigation }: RemindersScreenProps) {
@@ -57,8 +59,14 @@ export default function RemindersScreen({ navigation }: RemindersScreenProps) {
   const requestPermissions = async () => {
     setLoading(true);
     try {
-      // In a real app, we would request permissions here
-      // For this prototype, we'll simulate a successful connection
+      const remindersService = RemindersService.getInstance();
+      const initialized = await remindersService.initialize();
+      
+      if (!initialized) {
+        Alert.alert('Error', 'Could not initialize reminders. Please check your permissions.');
+        return;
+      }
+
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
       
@@ -92,19 +100,66 @@ export default function RemindersScreen({ navigation }: RemindersScreenProps) {
   const fetchCompletedReminders = async () => {
     setLoading(true);
     try {
-      // In a real app, we would fetch from the Reminders API
-      // For this prototype, we'll use mock data
-      const mockReminders: Reminder[] = [
-        { id: '1', title: 'Take medication' },
-        { id: '2', title: 'Call mom' },
-        { id: '3', title: 'Pay bills' },
-        { id: '4', title: 'Buy groceries' },
-      ];
+      const remindersService = RemindersService.getInstance();
+      const reminders = await remindersService.getReminders();
       
-      setCompletedReminders(mockReminders);
+      // Filter for completed reminders from today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const todayReminders = reminders
+        .filter((reminder: any) => {
+          // Check both completed flag and completion date
+          return reminder.completed && reminder.completionDate && new Date(reminder.completionDate) >= today;
+        })
+        .map((reminder: any) => ({
+          id: reminder.id,
+          title: reminder.title,
+          completionDate: reminder.completionDate
+        }));
+      
+      setCompletedReminders(todayReminders);
+
+      // Save to Supabase if there are completed reminders
+      if (todayReminders.length > 0) {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData.user?.id;
+        
+        if (userId) {
+          const reminderAccomplishments = todayReminders.map(reminder => ({
+            description: `Completed: ${reminder.title}`,
+            type: 'reminders' as const,
+            user_id: userId,
+            created_at: reminder.completionDate || new Date().toISOString(),
+          }));
+
+          const { error } = await supabase
+            .from('accomplishments')
+            .insert(reminderAccomplishments);
+
+          if (error) {
+            console.error('Error saving reminders to accomplishments:', error);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error fetching reminders:', error);
       Alert.alert('Error', 'Could not fetch completed reminders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markAsCompleted = async (id: string) => {
+    setLoading(true);
+    try {
+      const remindersService = RemindersService.getInstance();
+      await remindersService.markAsCompleted(id);
+      await fetchCompletedReminders(); // Refresh the list
+      Alert.alert('Success', 'Reminder marked as completed!');
+    } catch (error) {
+      console.error('Error marking reminder as completed:', error);
+      Alert.alert('Error', 'Could not mark reminder as completed');
     } finally {
       setLoading(false);
     }
@@ -150,6 +205,11 @@ export default function RemindersScreen({ navigation }: RemindersScreenProps) {
                   borderColor: colors.border
                 }]}>
                   <Text style={[styles.reminderText, { color: colors.text }]}>{item.title}</Text>
+                  {item.completionDate && (
+                    <Text style={[styles.completionDate, { color: colors.textSecondary }]}>
+                      {new Date(item.completionDate).toLocaleTimeString()}
+                    </Text>
+                  )}
                 </View>
               )}
               ListEmptyComponent={
@@ -224,5 +284,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  completionDate: {
+    ...typography.caption,
+    marginTop: spacing.xs,
   },
 });

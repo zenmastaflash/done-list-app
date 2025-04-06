@@ -5,6 +5,7 @@ import { HealthService } from '../services/HealthService';
 import { useTheme } from '../context/ThemeContext';
 import { spacing, borderRadius, typography, commonStyles } from '../styles/globals';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RemindersService } from '../services/RemindersService';
 
 type SettingsScreenProps = {
   navigation: NativeStackNavigationProp<any>;
@@ -210,6 +211,17 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
   const toggleReminders = async (value: boolean) => {
     try {
+      if (value) {
+        // Try to initialize reminders first
+        const remindersService = RemindersService.getInstance();
+        const initialized = await remindersService.initialize();
+        
+        if (!initialized) {
+          Alert.alert('Error', 'Could not initialize reminders. Please check your permissions.');
+          return;
+        }
+      }
+
       setSettings(prev => ({
         ...prev,
         connectReminders: value
@@ -307,12 +319,22 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
         
         <View style={[styles.settingContainer, { borderBottomColor: colors.border }]}>
           <Text style={[styles.settingText, { color: colors.text }]}>Connect Reminders</Text>
-          <Switch
-            value={settings.connectReminders}
-            onValueChange={toggleReminders}
-            trackColor={colors.switchTrack}
-            thumbColor={colors.switchThumb[settings.connectReminders ? 'true' : 'false']}
-          />
+          <View style={styles.settingControls}>
+            {settings.connectReminders && (
+              <TouchableOpacity 
+                style={[styles.settingButton, { backgroundColor: colors.primary, marginRight: spacing.sm }]}
+                onPress={() => navigation.navigate('Reminders')}
+              >
+                <Text style={[styles.buttonText, { color: 'white' }]}>Manage</Text>
+              </TouchableOpacity>
+            )}
+            <Switch
+              value={settings.connectReminders}
+              onValueChange={toggleReminders}
+              trackColor={colors.switchTrack}
+              thumbColor={colors.switchThumb[settings.connectReminders ? 'true' : 'false']}
+            />
+          </View>
         </View>
       </View>
       
@@ -380,6 +402,16 @@ const styles = StyleSheet.create({
   signOutButton: {
     ...commonStyles.button,
     marginTop: 'auto',
+  },
+  settingControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  settingButton: {
+    padding: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.sm,
+    alignItems: 'center',
   },
   buttonText: {
     ...typography.body,

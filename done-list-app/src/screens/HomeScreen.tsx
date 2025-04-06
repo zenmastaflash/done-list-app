@@ -12,6 +12,7 @@ import type { Accomplishment } from '../types/accomplishment';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FrequentAccomplishmentsService } from '../services/FrequentAccomplishmentsService';
+import { RemindersService } from '../services/RemindersService';
 
 type RootStackParamList = {
   Home: undefined;
@@ -51,11 +52,14 @@ export default function HomeScreen() {
   const frequentAccomplishmentsService = FrequentAccomplishmentsService.getInstance();
   const [showDropdown, setShowDropdown] = useState(false);
   const [inputFocused, setInputFocused] = useState(false);
+  const [remindersData, setRemindersData] = useState<Accomplishment[]>([]);
+  const [remindersConnected, setRemindersConnected] = useState(false);
   
   useFocusEffect(
     React.useCallback(() => {
       fetchAccomplishments();
       checkHealthConnection();
+      checkRemindersConnection();
     }, [])
   );
 
@@ -81,6 +85,27 @@ export default function HomeScreen() {
       }
     } catch (error) {
       console.error('Error checking health settings:', error);
+    }
+  };
+
+  const checkRemindersConnection = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('reminders_connected')
+        .single();
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking reminders connection:', error);
+        return;
+      }
+      
+      if (data?.reminders_connected) {
+        setRemindersConnected(true);
+        fetchRemindersData();
+      }
+    } catch (error) {
+      console.error('Error checking reminders settings:', error);
     }
   };
 
@@ -126,12 +151,41 @@ export default function HomeScreen() {
         setHealthData(healthAccomplishments.map((description, index) => ({
           id: `health-${index}`,
           description,
-          source: 'health',
-          isHealthData: true
+          type: 'health' as const,
+          created_at: new Date().toISOString(),
+          user_id: 'local'
         })));
       }
     } catch (error) {
       console.error('Error fetching health data:', error);
+    }
+  };
+
+  const fetchRemindersData = async () => {
+    try {
+      const remindersService = RemindersService.getInstance();
+      const reminders = await remindersService.getReminders();
+      
+      // Filter for completed reminders from today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const completedReminders = reminders
+        .filter((reminder: any) => {
+          const completionDate = new Date(reminder.completionDate);
+          return completionDate >= today;
+        })
+        .map((reminder: any, index: number) => ({
+          id: `reminder-${index}`,
+          description: `Completed: ${reminder.title}`,
+          type: 'reminders' as const,
+          created_at: reminder.completionDate,
+          user_id: 'local'
+        }));
+      
+      setRemindersData(completedReminders);
+    } catch (error) {
+      console.error('Error fetching reminders:', error);
     }
   };
 
@@ -228,6 +282,42 @@ export default function HomeScreen() {
     }
   };
 
+  const saveRemindersAsAccomplishments = async () => {
+    try {
+      const userResponse = await supabase.auth.getUser();
+      
+      if (!userResponse.data.user) {
+        handleUnauthorized();
+        return;
+      }
+      
+      const userId = userResponse.data.user.id;
+      
+      const reminderAccomplishments = remindersData.map(acc => ({
+        description: acc.description,
+        type: 'reminders' as const,
+        user_id: userId,
+        created_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase
+        .from('accomplishments')
+        .insert(reminderAccomplishments);
+
+      if (error) {
+        console.error('Error saving reminders data:', error);
+        throw error;
+      }
+
+      await loadAccomplishments();
+      setRemindersData([]); // Clear the local reminders data after saving
+      Alert.alert('Success', 'Reminders saved as accomplishments');
+    } catch (error) {
+      console.error('Error saving reminders data:', error);
+      Alert.alert('Error', 'Failed to save reminders data');
+    }
+  };
+
   const loadAccomplishments = async () => {
     setLoading(true);
     try {
@@ -306,7 +396,7 @@ export default function HomeScreen() {
   };
 
   // Combine manual accomplishments and health data
-  const allAccomplishments = [...accomplishments, ...healthData];
+  const allAccomplishments = [...accomplishments, ...healthData, ...remindersData];
 
   const styles = StyleSheet.create({
     container: {
@@ -591,6 +681,15 @@ export default function HomeScreen() {
           onPress={saveHealthDataAsAccomplishments}
         >
           <Text style={styles.buttonText}>Save Health Data as Accomplishments</Text>
+        </TouchableOpacity>
+      )}
+      
+      {remindersData.length > 0 && (
+        <TouchableOpacity 
+          style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
+          onPress={saveRemindersAsAccomplishments}
+        >
+          <Text style={styles.buttonText}>Save Reminders as Accomplishments</Text>
         </TouchableOpacity>
       )}
       

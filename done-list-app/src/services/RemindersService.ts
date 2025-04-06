@@ -1,9 +1,35 @@
 import { Platform } from 'react-native';
 import RNReminders from '@wiicamp/react-native-reminders';
 
+interface ReminderType {
+  id: string;
+  title: string;
+  dueDate?: string;
+  notes?: string;
+  priority?: number;
+  list?: string;
+  completed?: boolean;
+  completionDate?: string;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  notes?: string;
+  completed?: boolean;
+}
+
+interface ReminderUpdate {
+  title: string;
+  dueDate?: Date;
+  notes?: string;
+}
+
 export class RemindersService {
   private static instance: RemindersService;
-  private isInitialized = false;
+  private isInitialized: boolean = false;
 
   private constructor() {}
 
@@ -19,7 +45,7 @@ export class RemindersService {
 
     try {
       if (Platform.OS === 'ios') {
-        const authStatus = await RNReminders.requestPermission();
+        const authStatus = await (RNReminders as any).requestPermission();
         if (!authStatus) {
           console.error('Reminders permission not granted');
           return false;
@@ -34,7 +60,7 @@ export class RemindersService {
     }
   }
 
-  async getReminders(): Promise<any[]> {
+  async getReminders(): Promise<ReminderType[]> {
     if (!this.isInitialized) {
       const initialized = await this.initialize();
       if (!initialized) {
@@ -43,7 +69,7 @@ export class RemindersService {
     }
 
     try {
-      const reminders = await RNReminders.getReminders();
+      const reminders = await (RNReminders as any).getReminders();
       return reminders;
     } catch (error) {
       console.error('Failed to get reminders:', error);
@@ -60,7 +86,7 @@ export class RemindersService {
     }
 
     try {
-      const reminderId = await RNReminders.createReminder({
+      const reminderId = await (RNReminders as any).createReminder({
         title,
         dueDate: dueDate?.toISOString(),
         priority: 0,
@@ -83,7 +109,7 @@ export class RemindersService {
     }
 
     try {
-      await RNReminders.updateReminder({
+      await (RNReminders as any).updateReminder({
         id,
         title: updates.title,
         dueDate: updates.dueDate?.toISOString(),
@@ -106,7 +132,7 @@ export class RemindersService {
     }
 
     try {
-      await RNReminders.deleteReminder(id);
+      await (RNReminders as any).deleteReminder(id);
     } catch (error) {
       console.error('Failed to delete reminder:', error);
       throw error;
