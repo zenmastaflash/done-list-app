@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.donelist.app",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "NSHealthShareUsageDescription": "This app requires access to your health data to track your daily activities and achievements.",
         "NSHealthUpdateUsageDescription": "This app requires access to update your health data for tracking achievements.",
