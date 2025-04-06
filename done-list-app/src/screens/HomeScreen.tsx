@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Platform, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Alert, ActivityIndicator, Platform, Modal, TouchableWithoutFeedback, RefreshControl } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { HealthService } from '../services/HealthService';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -54,6 +54,7 @@ export default function HomeScreen() {
   const [inputFocused, setInputFocused] = useState(false);
   const [remindersData, setRemindersData] = useState<Accomplishment[]>([]);
   const [remindersConnected, setRemindersConnected] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   useFocusEffect(
     React.useCallback(() => {
@@ -79,9 +80,10 @@ export default function HomeScreen() {
         return;
       }
       
+      console.log('Health connection status:', data?.health_connected);
       if (data?.health_connected) {
         setHealthConnected(true);
-        fetchHealthData();
+        await fetchHealthData();
       }
     } catch (error) {
       console.error('Error checking health settings:', error);
@@ -146,8 +148,14 @@ export default function HomeScreen() {
 
   const fetchHealthData = async () => {
     try {
+      console.log('Fetching health data...');
+      console.log('Health connected:', healthConnected);
+      console.log('Health available:', await HealthService.isAvailable());
+      
       if (healthConnected && await HealthService.isAvailable()) {
         const healthAccomplishments = await HealthService.generateAccomplishments();
+        console.log('Generated health accomplishments:', healthAccomplishments);
+        
         setHealthData(healthAccomplishments.map((description, index) => ({
           id: `health-${index}`,
           description,
@@ -398,6 +406,23 @@ export default function HomeScreen() {
   // Combine manual accomplishments and health data
   const allAccomplishments = [...accomplishments, ...healthData, ...remindersData];
 
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchAccomplishments(),
+        fetchHealthData(),
+        fetchRemindersData(),
+        loadFrequentAccomplishments()
+      ]);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      Alert.alert('Error', 'Failed to refresh data');
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   const styles = StyleSheet.create({
     container: {
       ...commonStyles.container,
@@ -594,6 +619,11 @@ export default function HomeScreen() {
     dropdownText: {
       ...typography.body,
     },
+    footer: {
+      width: '100%',
+      padding: spacing.md,
+      backgroundColor: theme.colors.background,
+    },
   });
 
   if (!theme) return null;
@@ -621,7 +651,6 @@ export default function HomeScreen() {
             onSubmitEditing={addAccomplishment}
             onFocus={() => setShowDropdown(true)}
             onBlur={() => {
-              // Small delay to allow for touch events
               setTimeout(() => setShowDropdown(false), 200);
             }}
             autoFocus={false}
@@ -660,53 +689,65 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
       
-      {loading ? (
-        <ActivityIndicator style={styles.loader} color={theme.colors.primary} size="large" />
-      ) : (
-        <FlatList
-          data={allAccomplishments}
-          keyExtractor={(item, index) => item.id ? item.id.toString() : `item-${index}`}
-          renderItem={renderAccomplishment}
-          ListEmptyComponent={
-            <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-              No accomplishments yet today.
-            </Text>
-          }
-        />
-      )}
+      <View style={{ flex: 1 }}>
+        {loading ? (
+          <ActivityIndicator style={styles.loader} color={theme.colors.primary} size="large" />
+        ) : (
+          <FlatList
+            data={allAccomplishments}
+            keyExtractor={(item, index) => item.id ? item.id.toString() : `item-${index}`}
+            renderItem={renderAccomplishment}
+            ListEmptyComponent={
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+                No accomplishments yet today.
+              </Text>
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
+              />
+            }
+          />
+        )}
+      </View>
       
-      {healthData.length > 0 && (
-        <TouchableOpacity 
-          style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
-          onPress={saveHealthDataAsAccomplishments}
-        >
-          <Text style={styles.buttonText}>Save Health Data as Accomplishments</Text>
-        </TouchableOpacity>
-      )}
-      
-      {remindersData.length > 0 && (
-        <TouchableOpacity 
-          style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
-          onPress={saveRemindersAsAccomplishments}
-        >
-          <Text style={styles.buttonText}>Save Reminders as Accomplishments</Text>
-        </TouchableOpacity>
-      )}
-      
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity 
-          style={[styles.questionnaireButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => navigation.navigate('Questionnaire')}
-        >
-          <Text style={styles.buttonText}>Daily Check-in</Text>
-        </TouchableOpacity>
+      <View style={styles.footer}>
+        {healthData.length > 0 && (
+          <TouchableOpacity 
+            style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
+            onPress={saveHealthDataAsAccomplishments}
+          >
+            <Text style={styles.buttonText}>Save Health Data as Accomplishments</Text>
+          </TouchableOpacity>
+        )}
         
-        <TouchableOpacity 
-          style={[styles.settingsButton, { backgroundColor: theme.colors.secondary }]}
-          onPress={() => navigation.navigate('Settings')}
-        >
-          <Text style={styles.buttonText}>Settings</Text>
-        </TouchableOpacity>
+        {remindersData.length > 0 && (
+          <TouchableOpacity 
+            style={[styles.healthButton, { backgroundColor: theme.colors.secondary }]}
+            onPress={saveRemindersAsAccomplishments}
+          >
+            <Text style={styles.buttonText}>Save Reminders as Accomplishments</Text>
+          </TouchableOpacity>
+        )}
+        
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity 
+            style={[styles.questionnaireButton, { backgroundColor: theme.colors.primary }]}
+            onPress={() => navigation.navigate('Questionnaire')}
+          >
+            <Text style={styles.buttonText}>Daily Check-in</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.settingsButton, { backgroundColor: theme.colors.secondary }]}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Text style={styles.buttonText}>Settings</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );

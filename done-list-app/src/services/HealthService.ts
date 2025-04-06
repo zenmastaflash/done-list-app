@@ -8,9 +8,11 @@ import AppleHealthKit, {
 const PERMISSIONS = {
   permissions: {
     read: [
-      AppleHealthKit.Constants.Permissions.Steps,
-      AppleHealthKit.Constants.Permissions.DistanceWalking,
+      AppleHealthKit.Constants.Permissions.StepCount,
+      AppleHealthKit.Constants.Permissions.DistanceWalkingRunning,
       AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+      AppleHealthKit.Constants.Permissions.AppleExerciseTime,
+      AppleHealthKit.Constants.Permissions.FlightsClimbed,
     ],
     write: [],
   },
@@ -23,6 +25,7 @@ export class HealthService {
   static async isAvailable(): Promise<boolean> {
     // For iOS devices only
     if (Platform.OS !== 'ios') {
+      console.log('HealthKit not available: Not iOS device');
       return false;
     }
     
@@ -37,9 +40,11 @@ export class HealthService {
     }
 
     if (this.isInitialized) {
+      console.log('HealthKit already initialized');
       return true;
     }
 
+    console.log('Initializing HealthKit...');
     return new Promise((resolve) => {
       AppleHealthKit.initHealthKit(PERMISSIONS, (error: string) => {
         if (error) {
@@ -49,6 +54,7 @@ export class HealthService {
           return;
         }
         
+        console.log('HealthKit initialized successfully');
         this.isInitialized = true;
         resolve(true);
       });
@@ -57,18 +63,23 @@ export class HealthService {
 
   // Request permissions for Health data
   static async requestPermissions(): Promise<boolean> {
+    console.log('Requesting HealthKit permissions...');
     if (!await this.isAvailable()) {
+      console.log('HealthKit not available for permissions request');
       return false;
     }
     
     // Permission is already requested during initialization
+    console.log('HealthKit permissions status:', this.isInitialized);
     return this.isInitialized;
   }
 
   // Generate health accomplishments from real HealthKit data
   static async generateAccomplishments(): Promise<string[]> {
+    console.log('Generating health accomplishments...');
     if (!await this.isAvailable()) {
-      return this.generateMockAccomplishments();
+      console.log('HealthKit not available');
+      return [];
     }
     
     try {
@@ -76,82 +87,89 @@ export class HealthService {
         date: new Date().toISOString(),
       };
       
+      console.log('Fetching health data with options:', options);
+      
       // Get steps data
-      const stepsData = await new Promise<HealthValue>((resolve, reject) => {
-        AppleHealthKit.getStepCount(options, (err: string, results: HealthValue) => {
+      const steps = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getStepCount(options, (err: string, results: { value: number }) => {
           if (err) {
-            console.log('Error getting steps:', err);
-            resolve({ value: 0 });
+            console.error('Error getting steps:', err);
+            reject(err);
             return;
           }
-          resolve(results);
+          console.log('Steps fetched:', results.value);
+          resolve(results.value);
         });
       });
-      
-      // Get distance data
-      const distanceData = await new Promise<HealthValue>((resolve, reject) => {
-        AppleHealthKit.getDistanceWalking(options, (err: string, results: HealthValue) => {
+
+      // Get active energy burned
+      const activeEnergy = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getActiveEnergyBurned(options, (err: string, results: HealthValue[]) => {
           if (err) {
-            console.log('Error getting distance:', err);
-            resolve({ value: 0 });
+            console.error('Error getting active energy:', err);
+            reject(err);
             return;
           }
-          resolve(results);
+          console.log('Active energy fetched:', results[0]?.value);
+          resolve(results[0]?.value || 0);
         });
       });
-      
-      // Get calories data
-      const caloriesData = await new Promise<HealthValue>((resolve, reject) => {
-        AppleHealthKit.getActiveEnergyBurned(options, (err: string, results: HealthValue) => {
+
+      // Get exercise time
+      const exerciseTime = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getAppleExerciseTime(options, (err: string, results: HealthValue[]) => {
           if (err) {
-            console.log('Error getting calories:', err);
-            resolve({ value: 0 });
+            console.error('Error getting exercise time:', err);
+            reject(err);
             return;
           }
-          resolve(results);
+          console.log('Exercise time fetched:', results[0]?.value);
+          resolve(results[0]?.value || 0);
         });
       });
-      
-      const steps = stepsData?.value || 0;
-      const distance = (distanceData?.value || 0).toFixed(2);
-      const calories = Math.round(caloriesData?.value || 0);
-      
-      const accomplishments = [];
+
+      // Get flights climbed
+      const flightsClimbed = await new Promise<number>((resolve, reject) => {
+        AppleHealthKit.getFlightsClimbed(options, (err: string, results: { value: number }) => {
+          if (err) {
+            console.error('Error getting flights climbed:', err);
+            reject(err);
+            return;
+          }
+          console.log('Flights climbed fetched:', results.value);
+          resolve(results.value);
+        });
+      });
+
+      const accomplishments: string[] = [];
       
       if (steps > 0) {
-        accomplishments.push(`Walked ${steps.toLocaleString()} steps today`);
+        accomplishments.push(`Walked ${steps} steps today`);
       }
       
-      if (parseFloat(distance) > 0) {
-        accomplishments.push(`Walked ${distance} km today`);
+      if (activeEnergy > 0) {
+        accomplishments.push(`Burned ${Math.round(activeEnergy)} calories through activity`);
       }
       
-      if (calories > 0) {
-        accomplishments.push(`Burned ${calories} active calories`);
+      if (exerciseTime > 0) {
+        const minutes = Math.round(exerciseTime / 60);
+        accomplishments.push(`Exercised for ${minutes} minutes today`);
       }
       
-      // If no data, return mock data
-      if (accomplishments.length === 0) {
-        return this.generateMockAccomplishments();
+      if (flightsClimbed > 0) {
+        accomplishments.push(`Climbed ${flightsClimbed} flights of stairs today`);
       }
-      
+
+      console.log('Generated health accomplishments:', accomplishments);
       return accomplishments;
     } catch (error) {
-      console.error('Error getting health data:', error);
-      return this.generateMockAccomplishments();
+      console.error('Error generating health accomplishments:', error);
+      return [];
     }
   }
-  
-  // Generate mock data when HealthKit is not available
+
+  // Remove mock data generation
   private static generateMockAccomplishments(): string[] {
-    const steps = Math.floor(Math.random() * 8000) + 2000; // 2000-10000 steps
-    const distance = (steps * 0.0008).toFixed(2); // Rough conversion to km
-    const calories = Math.floor(steps * 0.05); // Rough estimate
-    
-    return [
-      `Walked ${steps.toLocaleString()} steps today`,
-      `Walked ${distance} km today`,
-      `Burned ${calories} active calories`
-    ];
+    return [];
   }
 }
